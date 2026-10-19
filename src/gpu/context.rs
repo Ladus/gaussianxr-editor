@@ -330,4 +330,88 @@ impl GpuContext {
         self.device.poll(wgpu::PollType::Poll)?;
         Ok(())
     }
+
+    // Renders into an offscreen surface-sized texture and reads it back as opaque RGBA8.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn capture_frame(
+        &self,
+        render: impl FnOnce(&mut wgpu::CommandEncoder, &wgpu::TextureView),
+    ) -> anyhow::Result<(u32, u32, Vec<u8>)> {
+        let width = self.surface_config.width;
+        let height = self.surface_config.height;
+        let format = self.surface_config.format;
+
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Capture Texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let padded_row = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Capture Readback Buffer"),
+            size: padded_row as u64 * height as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = self.create_command_encoder("Capture Encoder");
+        render(&mut encoder, &view);
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_row),
+                    rows_per_image: Some(height),
+                },
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.submit(encoder.finish());
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+        self.device.poll(wgpu::PollType::wait_indefinitely())?;
+        rx.recv()??;
+
+        let swap_rb = matches!(
+            format,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
+        );
+        let mapped = buffer.slice(..).get_mapped_range();
+        let mut pixels = Vec::with_capacity(width as usize * height as usize * 4);
+        for row in mapped.chunks(padded_row as usize).take(height as usize) {
+            for px in row[..width as usize * 4].chunks_exact(4) {
+                let (r, b) = if swap_rb { (px[2], px[0]) } else { (px[0], px[2]) };
+                pixels.extend_from_slice(&[r, px[1], b, 255]);
+            }
+        }
+        drop(mapped);
+        buffer.unmap();
+
+        Ok((width, height, pixels))
+    }
 }

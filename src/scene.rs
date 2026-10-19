@@ -18,6 +18,7 @@ pub struct Scene {
     pub scene_type: SceneType,
     pub gaussian_count: u32,
     pub time: f32,
+    pub rotation: Quat,
 }
 
 impl Scene {
@@ -26,7 +27,23 @@ impl Scene {
             scene_type,
             gaussian_count: 0,
             time: 0.0,
+            rotation: Quat::IDENTITY,
         }
+    }
+
+    pub fn rotate(&mut self, axis: Vec3, degrees: f32) {
+        let q = Quat::from_axis_angle(axis, degrees.to_radians());
+        self.rotation = (q * self.rotation).normalize();
+    }
+
+    // Display-only: files are shown upside down to match the VR viewer's up axis.
+    pub fn base_rotation() -> Quat {
+        Quat::from_rotation_z(std::f32::consts::PI)
+    }
+
+    // Maps file data to what is shown on screen.
+    pub fn view_rotation(&self) -> Quat {
+        (self.rotation * Self::base_rotation()).normalize()
     }
 
     pub fn replace_gaussians(&mut self, scene_type: SceneType, gaussian_count: u32) {

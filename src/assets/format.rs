@@ -17,6 +17,13 @@ impl FileFormat {
         Self::from_extension(ext)
     }
 
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Ply => "ply",
+            Self::Sog => "sog",
+        }
+    }
+
     pub fn from_extension(ext: &str) -> Option<Self> {
         match ext.to_ascii_lowercase().as_str() {
             "ply" => Some(Self::Ply),

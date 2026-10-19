@@ -5,11 +5,11 @@ use winit::{
     event::*,
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
-    window::Window,
+    window::{CursorGrabMode, Window},
 };
 
 use crate::{
-    assets,
+    assets::{self, format::FileFormat},
     camera::{Camera, CameraController, CameraState},
     gpu::context::GpuContext,
     redraw_scheduler::RedrawScheduler,
@@ -30,14 +30,25 @@ pub enum UserEvent {
     AppReady(AppState),
 
     #[cfg(target_arch = "wasm32")]
+    ExportRequested,
+
+    #[cfg(target_arch = "wasm32")]
     DroppedFileBytes {
         file_name: String,
         bytes: Vec<u8>,
     },
 }
 
+pub struct LoadedSource {
+    format: FileFormat,
+    path: std::path::PathBuf,
+    gaussians: Gaussians,
+}
+
 pub struct AppState {
     gpu: GpuContext,
+
+    source: Option<LoadedSource>,
 
     camera: Camera,
     camera_controller: CameraController,
@@ -56,6 +67,8 @@ pub struct AppState {
     is_focused: bool,
     is_occluded: bool,
 
+    is_looking: bool,
+
     redraw_scheduler: RedrawScheduler,
 }
 
@@ -65,12 +78,12 @@ impl AppState {
 
         let surface_size = gpu.surface_size();
         let camera = Camera {
-            eye: (10.0, 5.0, 10.0).into(),
-            target: (0.0, 0.0, 0.0).into(),
+            eye: Vec3::ZERO,
+            target: Vec3::Z,
             up: Vec3::Y,
             aspect: surface_size.width as f32 / surface_size.height as f32,
             fovy: 45.0,
-            znear: 0.1,
+            znear: 0.0001,
             zfar: 100.0,
         };
         let mut camera_controller = CameraController::new(5.0);
@@ -86,6 +99,7 @@ impl AppState {
 
         Ok(Self {
             gpu,
+            source: None,
             camera,
             camera_controller,
             camera_state: CameraState::Idle,
@@ -97,6 +111,7 @@ impl AppState {
             last_update_time: Instant::now(),
             is_focused: true,
             is_occluded: false,
+            is_looking: false,
             redraw_scheduler,
         })
     }
@@ -142,9 +157,43 @@ impl AppState {
         Ok(status)
     }
 
-    fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
+    fn handle_key(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        code: KeyCode,
+        is_pressed: bool,
+        repeat: bool,
+    ) {
+        const ROTATE_STEP_DEGREES: f32 = 11.25;
+
         match (code, is_pressed) {
             (KeyCode::Escape, true) => event_loop.exit(),
+            (KeyCode::KeyR, true) => {
+                self.camera_controller.reset_view();
+                self.redraw_scheduler.request_redraw();
+            }
+            (KeyCode::F2, true) => {
+                if !repeat {
+                    self.export();
+                }
+            }
+            (KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ, true) => {
+                if repeat {
+                    return;
+                }
+                let axis = match code {
+                    KeyCode::KeyX => Vec3::X,
+                    KeyCode::KeyY => Vec3::Y,
+                    _ => Vec3::Z,
+                };
+                let sign = if self.camera_controller.is_boost_pressed() {
+                    -1.0
+                } else {
+                    1.0
+                };
+                self.scene.rotate(axis, sign * ROTATE_STEP_DEGREES);
+                self.redraw_scheduler.request_redraw();
+            }
             _ => {
                 let changed = self.camera_controller.handle_key(code, is_pressed);
 
@@ -156,6 +205,35 @@ impl AppState {
                     self.redraw_scheduler.request_redraw();
                 }
             }
+        }
+    }
+
+    fn set_looking(&mut self, looking: bool) {
+        if self.is_looking == looking {
+            return;
+        }
+        self.is_looking = looking;
+
+        if looking {
+            // Windows has no Locked mode, so fall back to Confined
+            let grab = self
+                .window
+                .set_cursor_grab(CursorGrabMode::Locked)
+                .or_else(|_| self.window.set_cursor_grab(CursorGrabMode::Confined));
+            if let Err(e) = grab {
+                log::warn!("failed to grab cursor: {e}");
+            }
+            self.window.set_cursor_visible(false);
+        } else {
+            let _ = self.window.set_cursor_grab(CursorGrabMode::None);
+            self.window.set_cursor_visible(true);
+        }
+    }
+
+    fn handle_mouse_motion(&mut self, dx: f64, dy: f64) {
+        if self.is_looking {
+            self.camera_controller.rotate(dx as f32, dy as f32);
+            self.redraw_scheduler.request_redraw();
         }
     }
 
@@ -179,7 +257,12 @@ impl AppState {
         self.camera_state == CameraState::Active || self.scene.scene_type.is_dynamic()
     }
 
-    pub fn replace_gaussians(&mut self, gaussians: Gaussians) -> anyhow::Result<()> {
+    pub fn replace_gaussians(
+        &mut self,
+        format: FileFormat,
+        path: std::path::PathBuf,
+        gaussians: Gaussians,
+    ) -> anyhow::Result<()> {
         let new_scene_type = match &gaussians {
             Gaussians::Gaussian3d(_) => SceneType::Gaussian3d,
             Gaussians::Gaussian4d(_) => SceneType::Gaussian4d,
@@ -190,8 +273,109 @@ impl AppState {
 
         let gaussian_count = gaussians.len() as u32;
         self.scene.replace_gaussians(new_scene_type, gaussian_count);
+        self.scene.rotation = glam::Quat::IDENTITY;
+
+        // Start at the scene origin facing +Z, which is where exported scenes put the camera.
+        self.camera.eye = Vec3::ZERO;
+        self.camera.target = Vec3::Z;
+        self.camera.up = Vec3::Y;
+        self.camera_controller.sync_from_camera(&self.camera);
+
+        self.source = Some(LoadedSource {
+            format,
+            path,
+            gaussians,
+        });
 
         Ok(())
+    }
+
+    // Center-crops the viewport to a square and saves it as a 512x512 PNG.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn save_gallery_image(&mut self, path: &std::path::Path) -> anyhow::Result<()> {
+        use anyhow::Context;
+        use image::imageops;
+
+        const GALLERY_SIZE: u32 = 512;
+
+        let (width, height, pixels) = self.renderer.capture(&self.gpu)?;
+        let full = image::RgbaImage::from_raw(width, height, pixels)
+            .context("captured frame has unexpected size")?;
+
+        let side = width.min(height);
+        let square = imageops::crop_imm(&full, (width - side) / 2, (height - side) / 2, side, side)
+            .to_image();
+        let resized = imageops::resize(
+            &square,
+            GALLERY_SIZE,
+            GALLERY_SIZE,
+            imageops::FilterType::Lanczos3,
+        );
+
+        resized.save(path)?;
+        Ok(())
+    }
+
+    // Writes the loaded scene with the current rotation baked in and the camera as origin.
+    pub fn export(&mut self) {
+        self.renderer.update(&self.gpu, &self.scene, &self.camera);
+
+        let Some(source) = &self.source else {
+            log::warn!("nothing to export");
+            return;
+        };
+
+        // Express the on-screen result in the file's own frame so base orientation is not baked in.
+        // The exported scene is centered on the camera and turned about up so the current heading becomes +Z.
+        let to_file_frame = Scene::base_rotation().inverse();
+        let heading =
+            glam::Quat::from_rotation_y(self.camera_controller.yaw() + std::f32::consts::PI);
+        let bytes = match assets::exporter::export_gaussians(
+            source.format,
+            &source.gaussians,
+            to_file_frame * heading * self.scene.view_rotation(),
+            to_file_frame * heading * self.camera.eye,
+        ) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                log::error!("export failed: {e:?}");
+                return;
+            }
+        };
+
+        let stem = source
+            .path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("scene");
+        let out_name = format!("{stem}.{}", source.format.extension());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let dir = source.path.with_file_name(stem);
+            let out_path = dir.join(&out_name);
+            let write =
+                std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&out_path, &bytes));
+            match write {
+                Ok(()) => log::info!("exported: {out_path:?}"),
+                Err(e) => {
+                    log::error!("failed to write {out_path:?}: {e}");
+                    return;
+                }
+            }
+
+            let gallery_path = dir.join(format!("{stem}.gallery.png"));
+            match self.save_gallery_image(&gallery_path) {
+                Ok(()) => log::info!("exported: {gallery_path:?}"),
+                Err(e) => log::error!("failed to write {gallery_path:?}: {e:?}"),
+            }
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        match download_bytes(&out_name, &bytes) {
+            Ok(()) => log::info!("exported: {out_name}"),
+            Err(e) => log::error!("failed to download {out_name}: {e:?}"),
+        }
     }
 }
 
@@ -253,6 +437,7 @@ impl ApplicationHandler<UserEvent> for App {
         {
             if let Some(proxy) = self.proxy.take() {
                 install_web_drag_and_drop(proxy.clone());
+                install_web_export_button(proxy.clone());
                 wasm_bindgen_futures::spawn_local(async move {
                     assert!(
                         proxy
@@ -302,7 +487,7 @@ impl ApplicationHandler<UserEvent> for App {
                 match assets::loader::load_gaussians_from_path(format, &path).and_then(
                     |gaussians| {
                         let gaussian_count = gaussians.len();
-                        state.replace_gaussians(gaussians)?;
+                        state.replace_gaussians(format, path.clone(), gaussians)?;
                         Ok(gaussian_count)
                     },
                 ) {
@@ -352,12 +537,30 @@ impl ApplicationHandler<UserEvent> for App {
                     KeyEvent {
                         physical_key: PhysicalKey::Code(code),
                         state: key_state,
+                        repeat,
                         ..
                     },
                 ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
+            } => state.handle_key(event_loop, code, key_state.is_pressed(), repeat),
+            WindowEvent::MouseInput {
+                state: button_state,
+                button: MouseButton::Right,
+                ..
+            } => state.set_looking(button_state.is_pressed()),
+            WindowEvent::MouseWheel { delta, .. } => {
+                let steps = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 40.0,
+                };
+                state.camera_controller.adjust_speed(steps);
+            }
             WindowEvent::Focused(focused) => {
                 state.is_focused = focused;
+
+                if !focused {
+                    state.set_looking(false);
+                    state.camera_controller.release_all();
+                }
 
                 if focused {
                     state.last_update_time = Instant::now();
@@ -388,6 +591,17 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        if let (Some(state), DeviceEvent::MouseMotion { delta }) = (&mut self.state, event) {
+            state.handle_mouse_motion(delta.0, delta.1);
         }
     }
 
@@ -426,7 +640,7 @@ impl ApplicationHandler<UserEvent> for App {
                 match assets::loader::load_gaussians_from_bytes(format, &bytes).and_then(
                     |gaussians| {
                         let gaussian_count = gaussians.len();
-                        state.replace_gaussians(gaussians)?;
+                        state.replace_gaussians(format, file_name.clone().into(), gaussians)?;
                         Ok(gaussian_count)
                     },
                 ) {
@@ -440,8 +654,62 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 }
             }
+
+            #[cfg(target_arch = "wasm32")]
+            UserEvent::ExportRequested => {
+                if let Some(state) = &mut self.state {
+                    state.export();
+                }
+            }
         }
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn download_bytes(file_name: &str, bytes: &[u8]) -> Result<(), JsValue> {
+    use wasm_bindgen::JsCast;
+
+    let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(bytes));
+    let blob = web_sys::Blob::new_with_u8_array_sequence(&parts)?;
+    let url = web_sys::Url::create_object_url_with_blob(&blob)?;
+
+    let document = wgpu::web_sys::window()
+        .unwrap_throw()
+        .document()
+        .unwrap_throw();
+    let anchor: web_sys::HtmlAnchorElement = document.create_element("a")?.unchecked_into();
+    anchor.set_href(&url);
+    anchor.set_download(file_name);
+    anchor.click();
+
+    web_sys::Url::revoke_object_url(&url)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn install_web_export_button(proxy: winit::event_loop::EventLoopProxy<UserEvent>) {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen::closure::Closure;
+
+    let document = wgpu::web_sys::window()
+        .unwrap_throw()
+        .document()
+        .unwrap_throw();
+    let Some(button) = document.get_element_by_id("export-btn") else {
+        return;
+    };
+    let button: web_sys::HtmlElement = button.unchecked_into();
+
+    let handler = Closure::<dyn FnMut()>::new(move || {
+        let _ = proxy.send_event(UserEvent::ExportRequested);
+
+        // give keyboard focus back to the canvas so WASD keeps working
+        if let Some(canvas) = document.get_element_by_id("canvas") {
+            let canvas: web_sys::HtmlElement = canvas.unchecked_into();
+            let _ = canvas.focus();
+        }
+    });
+    button.set_onclick(Some(handler.as_ref().unchecked_ref()));
+    handler.forget();
 }
 
 #[cfg(target_arch = "wasm32")]

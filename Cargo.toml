@@ -35,6 +35,10 @@ web-sys = { version = "0.3", features = [
     "FileReader",
     "ProgressEvent",
     "Location",
+    "Blob",
+    "Url",
+    "HtmlElement",
+    "HtmlAnchorElement",
 ] }
 js-sys = "0.3"
 reqwest = {version = "0.11"}

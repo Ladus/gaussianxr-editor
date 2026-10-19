@@ -52,7 +52,12 @@ impl GlobalSortRenderer {
         }
     }
 
-    pub fn render(&mut self, encoder: &mut wgpu::CommandEncoder, output_view: &wgpu::TextureView) {
+    pub fn render(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        output_view: &wgpu::TextureView,
+        draw_axis: bool,
+    ) {
         if self.dirty || self.scene_type.is_dynamic() {
             self.preprocess_pass.encode(
                 encoder,
@@ -75,7 +80,9 @@ impl GlobalSortRenderer {
             output_view,
         );
 
-        self.axis_pass.encode(encoder, output_view);
+        if draw_axis {
+            self.axis_pass.encode(encoder, output_view);
+        }
     }
 
     pub fn resize(&mut self, gpu: &GpuContext, scene: &Scene, camera: &Camera) {

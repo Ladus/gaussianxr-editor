@@ -65,13 +65,19 @@ impl Renderer {
 
         let mut encoder = gpu.create_command_encoder("Render Encoder");
 
-        self.backend.render(&mut encoder, &output_view);
+        self.backend.render(&mut encoder, &output_view, true);
 
         redraw_scheduler.submit_frame(gpu, encoder.finish());
 
         output.present();
 
         Ok(RenderStatus::Submitted)
+    }
+
+    // Renders the current view without overlays and returns (width, height, RGBA8).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn capture(&mut self, gpu: &GpuContext) -> anyhow::Result<(u32, u32, Vec<u8>)> {
+        gpu.capture_frame(|encoder, view| self.backend.render(encoder, view, false))
     }
 
     pub fn resize(&mut self, gpu: &mut GpuContext, scene: &Scene, camera: &Camera) {

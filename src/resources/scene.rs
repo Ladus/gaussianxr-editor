@@ -37,10 +37,11 @@ impl SceneUniform {
         self.screen_size = screen_size;
     }
 
-    fn update_camera(&mut self, camera: &Camera) {
-        self.view = camera.build_view_matrix().to_cols_array_2d();
+    fn update_camera(&mut self, camera: &Camera, rotation: Quat) {
+        self.view = (camera.build_view_matrix() * Mat4::from_quat(rotation)).to_cols_array_2d();
         self.proj = camera.build_projection_matrix().to_cols_array_2d();
-        self.view_pos = camera.eye.into();
+        // shaders work in model space, so bring the eye into it
+        self.view_pos = (rotation.inverse() * camera.eye).into();
         self.near_far = [camera.znear, camera.zfar];
         let tan_fovy = (camera.fovy.to_radians() * 0.5).tan();
         let tan_fovx = tan_fovy * camera.aspect;
@@ -49,7 +50,7 @@ impl SceneUniform {
 
     fn update(&mut self, camera: &Camera, scene: &Scene, screen_size: [u32; 2]) {
         self.update_screen_size(screen_size);
-        self.update_camera(camera);
+        self.update_camera(camera, scene.view_rotation());
         self.gaussian_count = scene.gaussian_count;
         self.time = scene.time;
     }
@@ -69,7 +70,7 @@ impl SceneResource {
         let height = surface_size.height.max(1);
 
         uniform.update_screen_size([width, height]);
-        uniform.update_camera(camera);
+        uniform.update_camera(camera, Quat::IDENTITY);
 
         let uniform_buffer = gpu.create_buffer_init(
             "Scene Uniform Buffer",
