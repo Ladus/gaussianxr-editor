@@ -176,6 +176,12 @@ impl AppState {
                 self.camera_controller.reset_view();
                 self.redraw_scheduler.request_redraw();
             }
+            (KeyCode::F1, true) => {
+                if !repeat {
+                    self.renderer.toggle_help();
+                    self.redraw_scheduler.request_redraw();
+                }
+            }
             (KeyCode::F2, true) => {
                 if !repeat {
                     self.export(false);

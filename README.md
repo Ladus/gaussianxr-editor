@@ -41,6 +41,10 @@ with its gallery image.
 - **Export button** and updated help overlay in the web page (`index.html`).
 - **Empty-state message**: "Drag your scene here to load it" is shown until a
   scene is loaded, and the window redraws immediately after a scene loads.
+- **In-app help screen** toggled with `F1`: navigation, the `F1`/`F2`/`F3` keys,
+  what an export contains (gallery thumbnail from the camera's viewpoint, camera
+  position as the scene origin in Arcturus GaussianXR) and the optional
+  `scene.mp3` background sound.
 - New PLY writer, SOG v2 writer (lossless WebP images, quantized codebooks,
   clustered higher-order SH), and unit tests for the writers and SH rotation.
 
@@ -67,6 +71,7 @@ onto the window to load it.
 | Mouse wheel | Increase / decrease movement speed (15% per step) |
 | `R` | Reset the view direction to the default heading (+Z) |
 | `X` / `Y` / `Z` | Rotate the scene 11.25 degrees around that axis; hold `Shift` to rotate the other way |
+| `F1` | Show / hide the in-app help screen |
 | `F2` | Export the scene as-is, in the loaded file's format (`.ply` or `.sog`) |
 | `F3` | Export the scene as an optimized `.sog`, even if a `.ply` was loaded |
 | Export button | Export the scene (web) |

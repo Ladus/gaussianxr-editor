@@ -1,6 +1,7 @@
 struct Params {
     screen: vec2<f32>,
     size: vec2<f32>,
+    background_alpha: f32,
 };
 
 struct VertexOutput {
@@ -41,8 +42,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let coverage = textureSample(glyphs, glyph_sampler, in.uv).r;
-    if coverage < 0.5 {
-        discard;
+    if coverage >= 0.5 {
+        return vec4<f32>(1.0, 1.0, 1.0, 1.0);
     }
-    return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    return vec4<f32>(0.0, 0.0, 0.0, params.background_alpha);
 }
