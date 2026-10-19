@@ -22,6 +22,10 @@ with its gallery image.
   viewed from very close.
 - **Free scene rotation**: hold `X`, `Y` or `Z` and move the mouse up/down to
   rotate the scene smoothly around that axis (the cursor is captured).
+- **Measure and scale tool**: place two points with `1` and `2` on the splat
+  under a center crosshair (shown as a line with two dots so you can fly around
+  and check the placement), then press `3` and type the real length in meters to
+  scale the whole scene so the line has that length.
 - **Reset view** key to look straight ahead again.
 - **Default orientation**: scenes are displayed rotated 180 degrees around Z to
   match the VR viewer's up axis. This is display-only and is not baked into
@@ -72,6 +76,8 @@ onto the window to load it.
 | Mouse wheel | Increase / decrease movement speed (15% per step) |
 | `R` | Reset the view direction to the default heading (+Z) |
 | Hold `X` / `Y` / `Z` + move mouse up/down | Rotate the scene smoothly around that axis (0.3 degrees per pixel); the cursor is captured while held |
+| `1` / `2` | Place measurement point 1 / 2 on the splat under the center crosshair; a line and two dots are drawn between them |
+| `3` | Open the length prompt: type the real length of the line in meters (for example `0.6`), `Enter` scales the scene so the line has that length, `Esc` cancels |
 | `F1` | Show / hide the in-app help screen |
 | `F2` | Export the scene as-is, in the loaded file's format (`.ply` or `.sog`) |
 | `F3` | Export the scene as an optimized `.sog`, even if a `.ply` was loaded |

@@ -181,6 +181,32 @@ pub fn translate_gaussians(gaussians: &mut Gaussians, offset: Vec3) {
     }
 }
 
+// Uniformly scales the scene around `center`, including splat sizes and 4D motion.
+pub fn scale_gaussians(gaussians: &mut Gaussians, center: Vec3, factor: f32) {
+    let log_factor = factor.ln();
+    let scale_position =
+        |p: [f32; 3]| -> [f32; 3] { (center + (Vec3::from(p) - center) * factor).into() };
+    let scale_vec = |v: [f32; 3]| -> [f32; 3] { (Vec3::from(v) * factor).into() };
+
+    match gaussians {
+        Gaussians::Gaussian3d(items) => {
+            for g in items {
+                g.position = scale_position(g.position);
+                g.scale = g.scale.map(|s| s + log_factor);
+            }
+        }
+        Gaussians::Gaussian4d(items) => {
+            for g in items {
+                g.position = scale_position(g.position);
+                g.scale = g.scale.map(|s| s + log_factor);
+                g.motion_0 = scale_vec(g.motion_0);
+                g.motion_1 = scale_vec(g.motion_1);
+                g.motion_2 = scale_vec(g.motion_2);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

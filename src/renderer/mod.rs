@@ -1,6 +1,7 @@
 mod axis;
 pub mod global_sort;
+mod measure;
 pub mod renderer;
 pub mod screen_blit;
-pub mod tile;
 mod text_overlay;
+pub mod tile;

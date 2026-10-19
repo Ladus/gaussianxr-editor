@@ -162,6 +162,8 @@ pub struct TextStyle {
 // White text drawn in the middle of the frame.
 pub struct TextOverlay {
     pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
     bind_group: wgpu::BindGroup,
     params_buffer: wgpu::Buffer,
     text_size: [f32; 2],
@@ -170,25 +172,6 @@ pub struct TextOverlay {
 
 impl TextOverlay {
     pub fn new(gpu: &GpuContext, text: &str, style: TextStyle) -> Self {
-        let (width, height, pixels) = rasterize(text, style.center);
-
-        let texture = gpu.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Text Overlay Texture"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        gpu.write_texture_r8(&texture, &pixels, width, height);
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
         let sampler = gpu.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Text Overlay Sampler"),
             mag_filter: wgpu::FilterMode::Nearest,
@@ -234,23 +217,13 @@ impl TextOverlay {
             ],
         );
 
-        let bind_group = gpu.create_bind_group(
-            "text overlay bind group",
+        let (bind_group, text_size) = Self::make_bind_group(
+            gpu,
             &bind_group_layout,
-            &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: params_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
+            &params_buffer,
+            &sampler,
+            text,
+            style.center,
         );
 
         let pipeline_layout =
@@ -288,11 +261,75 @@ impl TextOverlay {
 
         Self {
             pipeline,
+            bind_group_layout,
+            sampler,
             bind_group,
             params_buffer,
-            text_size: [width as f32, height as f32],
+            text_size,
             style,
         }
+    }
+
+    fn make_bind_group(
+        gpu: &GpuContext,
+        layout: &wgpu::BindGroupLayout,
+        params_buffer: &wgpu::Buffer,
+        sampler: &wgpu::Sampler,
+        text: &str,
+        center: bool,
+    ) -> (wgpu::BindGroup, [f32; 2]) {
+        let (width, height, pixels) = rasterize(text, center);
+
+        let texture = gpu.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Text Overlay Texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        gpu.write_texture_r8(&texture, &pixels, width, height);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let bind_group = gpu.create_bind_group(
+            "text overlay bind group",
+            layout,
+            &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        );
+
+        (bind_group, [width as f32, height as f32])
+    }
+
+    pub fn set_text(&mut self, gpu: &GpuContext, text: &str) {
+        let (bind_group, text_size) = Self::make_bind_group(
+            gpu,
+            &self.bind_group_layout,
+            &self.params_buffer,
+            &self.sampler,
+            text,
+            self.style.center,
+        );
+        self.bind_group = bind_group;
+        self.text_size = text_size;
     }
 
     pub fn encode(

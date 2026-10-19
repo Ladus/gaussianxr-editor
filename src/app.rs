@@ -76,6 +76,11 @@ pub struct AppState {
     rotate_key: Option<KeyCode>,
     cursor_captured: bool,
 
+    // Measurement points in the scene's own (file) space.
+    measure_points: [Option<Vec3>; 2],
+    // Digits typed so far while the length prompt is open.
+    length_input: Option<String>,
+
     redraw_scheduler: RedrawScheduler,
 }
 
@@ -122,6 +127,8 @@ impl AppState {
             is_looking: false,
             rotate_key: None,
             cursor_captured: false,
+            measure_points: [None, None],
+            length_input: None,
             redraw_scheduler,
         })
     }
@@ -174,8 +181,30 @@ impl AppState {
         is_pressed: bool,
         repeat: bool,
     ) {
+        if self.length_input.is_some() {
+            if is_pressed {
+                self.handle_length_key(code);
+            }
+            return;
+        }
+
         match (code, is_pressed) {
             (KeyCode::Escape, true) => event_loop.exit(),
+            (KeyCode::Digit1 | KeyCode::Numpad1, true) => {
+                if !repeat {
+                    self.place_measure_point(0);
+                }
+            }
+            (KeyCode::Digit2 | KeyCode::Numpad2, true) => {
+                if !repeat {
+                    self.place_measure_point(1);
+                }
+            }
+            (KeyCode::Digit3 | KeyCode::Numpad3, true) => {
+                if !repeat {
+                    self.open_length_input();
+                }
+            }
             (KeyCode::KeyR, true) => {
                 self.camera_controller.reset_view();
                 self.redraw_scheduler.request_redraw();
@@ -220,6 +249,147 @@ impl AppState {
                 }
             }
         }
+    }
+
+    fn measure_length(&self) -> Option<f32> {
+        let [Some(a), Some(b)] = self.measure_points else {
+            return None;
+        };
+        let length = a.distance(b);
+        (length > 1e-6).then_some(length)
+    }
+
+    // Picks the splat under the screen center and stores it as measurement point `index`.
+    fn place_measure_point(&mut self, index: usize) {
+        let Some(source) = &self.source else {
+            return;
+        };
+
+        let forward = (self.camera.target - self.camera.eye).normalize_or_zero();
+        if forward == Vec3::ZERO {
+            return;
+        }
+        let inverse = self.scene.view_rotation().inverse();
+        let origin = inverse * self.camera.eye;
+        let direction = inverse * forward;
+
+        match assets::pick::pick_along_ray(&source.gaussians, origin, direction) {
+            Some(point) => {
+                self.measure_points[index] = Some(point);
+                self.renderer.set_measure_points(self.measure_points);
+                log::info!("measure point {} set at {point:?}", index + 1);
+                self.redraw_scheduler.request_redraw();
+            }
+            None => log::warn!("no splat under the crosshair for point {}", index + 1),
+        }
+    }
+
+    fn open_length_input(&mut self) {
+        self.camera_controller.release_all();
+        self.rotate_key = None;
+        self.update_cursor_capture();
+
+        self.length_input = Some(String::new());
+        self.refresh_length_prompt();
+        self.redraw_scheduler.request_redraw();
+    }
+
+    fn refresh_length_prompt(&mut self) {
+        let text = self.length_input.as_deref().map(|typed| {
+            match self.measure_length() {
+                Some(length) => format!(
+                    "Set line length\n\nCurrent length: {length:.4}\n\nEnter length in meters: {typed}_\n\nEnter = apply   Esc = cancel"
+                ),
+                None => "Place both points first (keys 1 and 2)\n\nPress Esc to close".to_string(),
+            }
+        });
+        self.renderer.set_input_prompt(&self.gpu, text.as_deref());
+    }
+
+    fn handle_length_key(&mut self, code: KeyCode) {
+        let digit = match code {
+            KeyCode::Digit0 | KeyCode::Numpad0 => Some('0'),
+            KeyCode::Digit1 | KeyCode::Numpad1 => Some('1'),
+            KeyCode::Digit2 | KeyCode::Numpad2 => Some('2'),
+            KeyCode::Digit3 | KeyCode::Numpad3 => Some('3'),
+            KeyCode::Digit4 | KeyCode::Numpad4 => Some('4'),
+            KeyCode::Digit5 | KeyCode::Numpad5 => Some('5'),
+            KeyCode::Digit6 | KeyCode::Numpad6 => Some('6'),
+            KeyCode::Digit7 | KeyCode::Numpad7 => Some('7'),
+            KeyCode::Digit8 | KeyCode::Numpad8 => Some('8'),
+            KeyCode::Digit9 | KeyCode::Numpad9 => Some('9'),
+            _ => None,
+        };
+
+        match code {
+            KeyCode::Escape => self.length_input = None,
+            KeyCode::Enter | KeyCode::NumpadEnter => self.confirm_length(),
+            KeyCode::Backspace => {
+                if let Some(typed) = &mut self.length_input {
+                    typed.pop();
+                }
+            }
+            KeyCode::Period | KeyCode::NumpadDecimal | KeyCode::Comma => {
+                if let Some(typed) = &mut self.length_input {
+                    if !typed.contains('.') {
+                        typed.push('.');
+                    }
+                }
+            }
+            _ => {
+                if let (Some(typed), Some(digit)) = (&mut self.length_input, digit) {
+                    if typed.len() < 12 {
+                        typed.push(digit);
+                    }
+                }
+            }
+        }
+
+        self.refresh_length_prompt();
+        self.redraw_scheduler.request_redraw();
+    }
+
+    fn confirm_length(&mut self) {
+        let Some(current) = self.measure_length() else {
+            self.length_input = None;
+            return;
+        };
+
+        let typed = self.length_input.clone().unwrap_or_default();
+        let Ok(meters) = typed.parse::<f32>() else {
+            return;
+        };
+        if !meters.is_finite() || meters <= 0.0 {
+            return;
+        }
+
+        self.apply_scale(meters / current);
+        self.length_input = None;
+    }
+
+    // Scales the whole scene around the line's midpoint and re-uploads it.
+    fn apply_scale(&mut self, factor: f32) {
+        let [Some(a), Some(b)] = self.measure_points else {
+            return;
+        };
+        let Some(source) = &mut self.source else {
+            return;
+        };
+
+        let center = (a + b) * 0.5;
+        assets::transform::scale_gaussians(&mut source.gaussians, center, factor);
+        self.renderer
+            .replace_gaussians(&mut self.gpu, &source.gaussians, self.scene.scene_type);
+
+        self.measure_points = [
+            Some(center + (a - center) * factor),
+            Some(center + (b - center) * factor),
+        ];
+        self.renderer.set_measure_points(self.measure_points);
+
+        log::info!("scaled scene by {factor}");
+        self.force_frame = true;
+        self.redraw_scheduler.request_redraw();
     }
 
     fn set_looking(&mut self, looking: bool) {
@@ -308,6 +478,11 @@ impl AppState {
         let gaussian_count = gaussians.len() as u32;
         self.scene.replace_gaussians(new_scene_type, gaussian_count);
         self.scene.rotation = glam::Quat::IDENTITY;
+
+        self.measure_points = [None, None];
+        self.renderer.set_measure_points(self.measure_points);
+        self.length_input = None;
+        self.renderer.set_input_prompt(&self.gpu, None);
 
         // Start at the scene origin facing +Z, which is where exported scenes put the camera.
         self.camera.eye = Vec3::ZERO;

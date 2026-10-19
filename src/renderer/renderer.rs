@@ -4,7 +4,9 @@ use crate::redraw_scheduler::RedrawScheduler;
 use crate::resources::gaussians::Gaussians;
 use crate::scene::{Scene, SceneType};
 
+use super::measure::MeasurePass;
 use super::text_overlay::{TextOverlay, TextStyle};
+use glam::{Mat4, Vec3};
 
 const PLACEHOLDER_TEXT: &str = "Drag your scene here to load it\n\nPress F1 for help";
 
@@ -25,6 +27,11 @@ KEYS
   F1   Show / hide this help
   F2   Export in the loaded file's format (.ply or .sog)
   F3   Export as an optimized .sog (3D scenes only)
+
+MEASURE (set the real-world scale)
+  1 / 2   Place point 1 / 2 on the splat under the + crosshair
+  3       Type the line length in meters (for example 0.6) and press
+          Enter. The whole scene is scaled so the line has that length.
 
 EXPORT
   Each export creates a folder named after the loaded file. It holds
@@ -55,6 +62,13 @@ pub struct Renderer {
     placeholder: Option<TextOverlay>,
     help: TextOverlay,
     show_help: bool,
+
+    measure: MeasurePass,
+    measure_points: [Option<Vec3>; 2],
+    crosshair: TextOverlay,
+    // Length prompt shown while the user types a measurement.
+    input_prompt: TextOverlay,
+    show_input_prompt: bool,
 }
 
 impl Renderer {
@@ -91,6 +105,41 @@ impl Renderer {
             placeholder,
             help,
             show_help: false,
+            measure: MeasurePass::new(gpu),
+            measure_points: [None, None],
+            crosshair: TextOverlay::new(
+                gpu,
+                "+",
+                TextStyle {
+                    center: true,
+                    max_width: 0.02,
+                    max_height: 0.02,
+                    background_alpha: 0.0,
+                },
+            ),
+            input_prompt: TextOverlay::new(
+                gpu,
+                "",
+                TextStyle {
+                    center: true,
+                    max_width: 0.6,
+                    max_height: 0.4,
+                    background_alpha: 0.85,
+                },
+            ),
+            show_input_prompt: false,
+        }
+    }
+
+    pub fn set_measure_points(&mut self, points: [Option<Vec3>; 2]) {
+        self.measure_points = points;
+    }
+
+    // `None` hides the prompt.
+    pub fn set_input_prompt(&mut self, gpu: &GpuContext, text: Option<&str>) {
+        self.show_input_prompt = text.is_some();
+        if let Some(text) = text {
+            self.input_prompt.set_text(gpu, text);
         }
     }
 
@@ -100,6 +149,16 @@ impl Renderer {
 
     pub fn update(&mut self, gpu: &GpuContext, scene: &Scene, camera: &Camera) {
         self.backend.update_scene_uniform(gpu, scene, camera);
+
+        let view_proj = camera.build_projection_matrix()
+            * camera.build_view_matrix()
+            * Mat4::from_quat(scene.view_rotation());
+        self.measure.update(
+            gpu,
+            view_proj,
+            self.measure_points[0],
+            self.measure_points[1],
+        );
     }
 
     pub fn render(
@@ -133,6 +192,7 @@ impl Renderer {
         let mut encoder = gpu.create_command_encoder("Render Encoder");
 
         self.backend.render(&mut encoder, &output_view, true);
+        self.measure.encode(&mut encoder, &output_view);
 
         if let Some(placeholder) = &self.placeholder {
             if !self.show_help {
@@ -142,6 +202,12 @@ impl Renderer {
 
         if self.show_help {
             self.help.encode(gpu, &mut encoder, &output_view);
+        } else if self.placeholder.is_none() {
+            self.crosshair.encode(gpu, &mut encoder, &output_view);
+        }
+
+        if self.show_input_prompt {
+            self.input_prompt.encode(gpu, &mut encoder, &output_view);
         }
 
         redraw_scheduler.submit_frame(gpu, encoder.finish());
