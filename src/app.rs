@@ -72,6 +72,10 @@ pub struct AppState {
 
     is_looking: bool,
 
+    // Axis key (X/Y/Z) currently held to rotate the scene with the mouse.
+    rotate_key: Option<KeyCode>,
+    cursor_captured: bool,
+
     redraw_scheduler: RedrawScheduler,
 }
 
@@ -116,6 +120,8 @@ impl AppState {
             is_occluded: false,
             force_frame: false,
             is_looking: false,
+            rotate_key: None,
+            cursor_captured: false,
             redraw_scheduler,
         })
     }
@@ -168,8 +174,6 @@ impl AppState {
         is_pressed: bool,
         repeat: bool,
     ) {
-        const ROTATE_STEP_DEGREES: f32 = 11.25;
-
         match (code, is_pressed) {
             (KeyCode::Escape, true) => event_loop.exit(),
             (KeyCode::KeyR, true) => {
@@ -193,21 +197,16 @@ impl AppState {
                 }
             }
             (KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ, true) => {
-                if repeat {
-                    return;
+                if !repeat {
+                    self.rotate_key = Some(code);
+                    self.update_cursor_capture();
                 }
-                let axis = match code {
-                    KeyCode::KeyX => Vec3::X,
-                    KeyCode::KeyY => Vec3::Y,
-                    _ => Vec3::Z,
-                };
-                let sign = if self.camera_controller.is_boost_pressed() {
-                    -1.0
-                } else {
-                    1.0
-                };
-                self.scene.rotate(axis, sign * ROTATE_STEP_DEGREES);
-                self.redraw_scheduler.request_redraw();
+            }
+            (KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ, false) => {
+                if self.rotate_key == Some(code) {
+                    self.rotate_key = None;
+                    self.update_cursor_capture();
+                }
             }
             _ => {
                 let changed = self.camera_controller.handle_key(code, is_pressed);
@@ -224,12 +223,19 @@ impl AppState {
     }
 
     fn set_looking(&mut self, looking: bool) {
-        if self.is_looking == looking {
+        self.is_looking = looking;
+        self.update_cursor_capture();
+    }
+
+    // The cursor stays captured while looking around or rotating the scene.
+    fn update_cursor_capture(&mut self) {
+        let capture = self.is_looking || self.rotate_key.is_some();
+        if self.cursor_captured == capture {
             return;
         }
-        self.is_looking = looking;
+        self.cursor_captured = capture;
 
-        if looking {
+        if capture {
             // Windows has no Locked mode, so fall back to Confined
             let grab = self
                 .window
@@ -246,7 +252,20 @@ impl AppState {
     }
 
     fn handle_mouse_motion(&mut self, dx: f64, dy: f64) {
-        if self.is_looking {
+        const SCENE_ROTATE_DEGREES_PER_PIXEL: f32 = 0.3;
+
+        let axis = match self.rotate_key {
+            Some(KeyCode::KeyX) => Some(Vec3::X),
+            Some(KeyCode::KeyY) => Some(Vec3::Y),
+            Some(KeyCode::KeyZ) => Some(Vec3::Z),
+            _ => None,
+        };
+
+        if let Some(axis) = axis {
+            self.scene
+                .rotate(axis, dy as f32 * SCENE_ROTATE_DEGREES_PER_PIXEL);
+            self.redraw_scheduler.request_redraw();
+        } else if self.is_looking {
             self.camera_controller.rotate(dx as f32, dy as f32);
             self.redraw_scheduler.request_redraw();
         }
@@ -597,6 +616,7 @@ impl ApplicationHandler<UserEvent> for App {
                 state.is_focused = focused;
 
                 if !focused {
+                    state.rotate_key = None;
                     state.set_looking(false);
                     state.camera_controller.release_all();
                 }

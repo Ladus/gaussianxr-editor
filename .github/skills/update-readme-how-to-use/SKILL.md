@@ -13,6 +13,7 @@ Apply this skill after any change that alters what a user sees or does, for exam
 
 - A key binding or mouse control is added, changed, or removed (see `handle_key`, `window_event`, and `device_event` in `src/app.rs`, and `src/camera.rs`).
 - A button or overlay is added to `index.html`.
+- The F1 help screen (`HELP_TEXT` in `src/renderer/renderer.rs`) no longer matches the app.
 - Supported file formats, export output, file locations, or default orientation change.
 - Run or build steps change.
 
@@ -28,7 +29,8 @@ Skip it for pure refactors, shader internals, or performance work with no user-v
    - Describe export, loading, and any platform differences (native vs web) in the prose below the table.
 4. If the change is a new addition or modification compared to the upstream project (https://github.com/abist-co-ltd/wgpu-gs-viewer), add or update a bullet in **Changes from upstream**.
 5. Keep `index.html`'s help overlay consistent with the controls table when the web build is affected.
-6. Do not create separate documentation files. README.md is the only manual.
+6. Update the in-app F1 help screen so it matches: edit the `HELP_TEXT` constant in `src/renderer/renderer.rs`. Keep it ASCII only (the built-in font has no other characters), keep lines short enough to fit the window, and keep it consistent with the controls table, the export keys, and the export description.
+7. Do not create separate documentation files. README.md is the only manual.
 
 ## Style
 

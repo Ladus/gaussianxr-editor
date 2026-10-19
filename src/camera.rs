@@ -125,10 +125,6 @@ impl CameraController {
         changed
     }
 
-    pub fn is_boost_pressed(&self) -> bool {
-        self.boost_pressed
-    }
-
     pub fn release_all(&mut self) {
         self.forward_pressed = false;
         self.backward_pressed = false;

@@ -20,7 +20,8 @@ with its gallery image.
   boost.
 - **No near clipping in practice**: the near plane is 0.0001 so splats can be
   viewed from very close.
-- **Scene rotation** in 11.25 degree steps around the X, Y and Z axes.
+- **Free scene rotation**: hold `X`, `Y` or `Z` and move the mouse up/down to
+  rotate the scene smoothly around that axis (the cursor is captured).
 - **Reset view** key to look straight ahead again.
 - **Default orientation**: scenes are displayed rotated 180 degrees around Z to
   match the VR viewer's up axis. This is display-only and is not baked into
@@ -70,7 +71,7 @@ onto the window to load it.
 | Hold right mouse button + move mouse | Look around; the cursor is captured while held |
 | Mouse wheel | Increase / decrease movement speed (15% per step) |
 | `R` | Reset the view direction to the default heading (+Z) |
-| `X` / `Y` / `Z` | Rotate the scene 11.25 degrees around that axis; hold `Shift` to rotate the other way |
+| Hold `X` / `Y` / `Z` + move mouse up/down | Rotate the scene smoothly around that axis (0.3 degrees per pixel); the cursor is captured while held |
 | `F1` | Show / hide the in-app help screen |
 | `F2` | Export the scene as-is, in the loaded file's format (`.ply` or `.sog`) |
 | `F3` | Export the scene as an optimized `.sog`, even if a `.ply` was loaded |

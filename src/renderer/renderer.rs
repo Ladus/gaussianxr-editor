@@ -19,7 +19,7 @@ NAVIGATION
   Hold right mouse      Look around
   Mouse wheel           Change movement speed
   R                     Reset view direction
-  X / Y / Z             Rotate scene 11.25 deg (Shift reverses)
+  Hold X / Y / Z        + move mouse up/down to rotate the scene
 
 KEYS
   F1   Show / hide this help
