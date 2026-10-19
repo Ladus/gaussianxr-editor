@@ -10,6 +10,23 @@ compliant with Arcturus GaussianXR for the Steam Frame: fly to the spot you want
 as the origin, aim the camera, orient the scene, and export the scene together
 with its gallery image.
 
+![Rotating and scaling a scene](.attachments/RotatingAndScaling.gif)
+
+*Rotating the scene with `X`/`Y`/`Z` and scaling it to a real-world size with
+the measure tool (`1`, `2`, `3`).*
+
+## Screenshots
+
+### Viewing splats
+
+![A pumpkin splat in the viewer](.attachments/PumpkinSplat.png)
+
+### User interface
+
+| Start screen | Help screen (`F1`) |
+| --- | --- |
+| ![Start screen](.attachments/StartScreen.png) | ![Instruction screen](.attachments/InstructionScreen.png) |
+
 ## Changes from upstream
 
 - **First-person fly camera** replaces the orbit camera: move with
