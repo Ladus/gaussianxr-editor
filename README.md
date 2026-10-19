@@ -34,7 +34,8 @@ with its gallery image.
     becomes the forward direction (+Z, which is what Arcturus expects); pitch is
     not baked in,
   - the output is written to a `<name>/` folder together with a 512x512
-    `<name>.gallery.png` screenshot of the current view (native build).
+    `<name>.gallery.png` screenshot of the current view and a
+    `<name>.xrSceneTransform.json` (native build).
 - **Camera starts at the origin** facing +Z, both at startup and whenever a file
   is loaded, so a re-loaded exported scene opens exactly where it was exported.
 - **Export button** and updated help overlay in the web page (`index.html`).
@@ -81,9 +82,13 @@ scene is turned about the up axis so the direction you are facing becomes
 forward (+Z). Position and aim the camera before exporting.
 
 - Native: creates a `<name>/` folder next to the loaded file containing
-  `<name>.ply` or `<name>.sog` and `<name>.gallery.png`, a 512x512
-  center-cropped screenshot of the current view (without the axis gizmo).
-- Web: downloads only the scene file; there is no screenshot.
+  `<name>.ply` or `<name>.sog`, `<name>.gallery.png`, a 512x512 center-cropped
+  screenshot of the current view (without the axis gizmo), and
+  `<name>.xrSceneTransform.json`, which sets the ambient audio loop
+  (`scene.mp3`, volume 0.7, 2 s fade-in) and uses `<name>` as the title. The
+  audio file itself is not created, but this allows for easily adding a
+  scene.mp3 for background noise if desired.
+- Web: downloads only the scene file; there is no screenshot or JSON.
 - PLY export is exact apart from float rounding. SOG export re-quantizes the
   data and is lossy.
 - Exporting again overwrites earlier output with the same name.

@@ -385,6 +385,18 @@ impl AppState {
             }
 
             let gallery_path = dir.join(format!("{stem}.gallery.png"));
+
+            // Hand-written so the key order matches what the XR viewer's samples use.
+            let title = serde_json::to_string(stem).unwrap_or_else(|_| "\"scene\"".to_string());
+            let transform_json = format!(
+                "{{\n  \"audio\": {{\n    \"ambientLoop\": {{\n      \"file\": \"scene.mp3\",\n      \"volume\": 0.7,\n      \"fadeInTime\": 2.0\n    }}\n  }},\n  \"title\": {title}\n}}\n"
+            );
+            let json_path = dir.join(format!("{stem}.xrSceneTransform.json"));
+            match std::fs::write(&json_path, transform_json) {
+                Ok(()) => log::info!("exported: {json_path:?}"),
+                Err(e) => log::error!("failed to write {json_path:?}: {e}"),
+            }
+
             match self.save_gallery_image(&gallery_path) {
                 Ok(()) => log::info!("exported: {gallery_path:?}"),
                 Err(e) => log::error!("failed to write {gallery_path:?}: {e:?}"),
