@@ -4,6 +4,8 @@ use crate::redraw_scheduler::RedrawScheduler;
 use crate::resources::gaussians::Gaussians;
 use crate::scene::{Scene, SceneType};
 
+use super::text_overlay::TextOverlay;
+
 #[cfg(not(feature = "tile-renderer"))]
 pub use super::global_sort::renderer::GlobalSortRenderer as ActiveRendererBackend;
 #[cfg(feature = "tile-renderer")]
@@ -17,6 +19,8 @@ pub enum RenderStatus {
 
 pub struct Renderer {
     backend: ActiveRendererBackend,
+    // Shown until the first scene is loaded.
+    placeholder: Option<TextOverlay>,
 }
 
 impl Renderer {
@@ -27,8 +31,12 @@ impl Renderer {
         scene_type: SceneType,
     ) -> Self {
         let backend = ActiveRendererBackend::new(gpu, gaussians, camera, scene_type);
+        let placeholder = Some(TextOverlay::new(gpu, "Drag your scene here to load it"));
 
-        Self { backend }
+        Self {
+            backend,
+            placeholder,
+        }
     }
 
     pub fn update(&mut self, gpu: &GpuContext, scene: &Scene, camera: &Camera) {
@@ -67,6 +75,10 @@ impl Renderer {
 
         self.backend.render(&mut encoder, &output_view, true);
 
+        if let Some(placeholder) = &self.placeholder {
+            placeholder.encode(gpu, &mut encoder, &output_view);
+        }
+
         redraw_scheduler.submit_frame(gpu, encoder.finish());
 
         output.present();
@@ -90,6 +102,7 @@ impl Renderer {
         gaussians: &Gaussians,
         scene_type: SceneType,
     ) {
+        self.placeholder = None;
         self.backend.replace_gaussians(gpu, gaussians, scene_type);
     }
 }

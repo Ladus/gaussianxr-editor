@@ -25,8 +25,8 @@ with its gallery image.
 - **Default orientation**: scenes are displayed rotated 180 degrees around Z to
   match the VR viewer's up axis. This is display-only and is not baked into
   exported files.
-- **Export** of the loaded scene back to `.ply` or `.sog` (same format as the
-  loaded file):
+- **Export** of the loaded scene back to `.ply` or `.sog` (`F2` keeps the loaded
+  file's format, `F3` always writes an optimized `.sog`):
   - the scene rotation is baked into the data (positions, orientations,
     spherical-harmonic colors, and 4D motion for STG-Lite PLY files),
   - the camera position becomes the origin (0, 0, 0) of the exported scene,
@@ -38,6 +38,8 @@ with its gallery image.
 - **Camera starts at the origin** facing +Z, both at startup and whenever a file
   is loaded, so a re-loaded exported scene opens exactly where it was exported.
 - **Export button** and updated help overlay in the web page (`index.html`).
+- **Empty-state message**: "Drag your scene here to load it" is shown until a
+  scene is loaded, and the window redraws immediately after a scene loads.
 - New PLY writer, SOG v2 writer (lossless WebP images, quantized codebooks,
   clustered higher-order SH), and unit tests for the writers and SH rotation.
 
@@ -64,16 +66,19 @@ onto the window to load it.
 | Mouse wheel | Increase / decrease movement speed (15% per step) |
 | `R` | Reset the view direction to the default heading (+Z) |
 | `X` / `Y` / `Z` | Rotate the scene 11.25 degrees around that axis; hold `Shift` to rotate the other way |
-| `F2` | Export the scene (native) |
+| `F2` | Export the scene as-is, in the loaded file's format (`.ply` or `.sog`) |
+| `F3` | Export the scene as an optimized `.sog`, even if a `.ply` was loaded |
 | Export button | Export the scene (web) |
 | `Esc` | Quit |
 
 ### Exporting
 
 Export saves the loaded file in its original format with the current scene
-rotation applied. The camera's current position becomes the origin (0, 0, 0),
-and the scene is turned about the up axis so the direction you are facing
-becomes forward (+Z). Position and aim the camera before exporting.
+rotation applied (`F2`), or as a `.sog` regardless of the loaded format (`F3`).
+SOG export supports 3D scenes only, so `F3` fails for Space-Time Gaussian Lite
+PLY files. The camera's current position becomes the origin (0, 0, 0), and the
+scene is turned about the up axis so the direction you are facing becomes
+forward (+Z). Position and aim the camera before exporting.
 
 - Native: creates a `<name>/` folder next to the loaded file containing
   `<name>.ply` or `<name>.sog` and `<name>.gallery.png`, a 512x512

@@ -67,6 +67,9 @@ pub struct AppState {
     is_focused: bool,
     is_occluded: bool,
 
+    // Draw one frame even if the window is unfocused (e.g. right after a drop from Explorer).
+    force_frame: bool,
+
     is_looking: bool,
 
     redraw_scheduler: RedrawScheduler,
@@ -111,6 +114,7 @@ impl AppState {
             last_update_time: Instant::now(),
             is_focused: true,
             is_occluded: false,
+            force_frame: false,
             is_looking: false,
             redraw_scheduler,
         })
@@ -174,7 +178,12 @@ impl AppState {
             }
             (KeyCode::F2, true) => {
                 if !repeat {
-                    self.export();
+                    self.export(false);
+                }
+            }
+            (KeyCode::F3, true) => {
+                if !repeat {
+                    self.export(true);
                 }
             }
             (KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ, true) => {
@@ -281,6 +290,11 @@ impl AppState {
         self.camera.up = Vec3::Y;
         self.camera_controller.sync_from_camera(&self.camera);
 
+        self.force_frame = true;
+        #[cfg(not(target_arch = "wasm32"))]
+        self.window.focus_window();
+        self.redraw_scheduler.request_redraw();
+
         self.source = Some(LoadedSource {
             format,
             path,
@@ -317,12 +331,18 @@ impl AppState {
     }
 
     // Writes the loaded scene with the current rotation baked in and the camera as origin.
-    pub fn export(&mut self) {
+    // `force_sog` exports as .sog even when the loaded file was a .ply.
+    pub fn export(&mut self, force_sog: bool) {
         self.renderer.update(&self.gpu, &self.scene, &self.camera);
 
         let Some(source) = &self.source else {
             log::warn!("nothing to export");
             return;
+        };
+        let format = if force_sog {
+            FileFormat::Sog
+        } else {
+            source.format
         };
 
         // Express the on-screen result in the file's own frame so base orientation is not baked in.
@@ -331,7 +351,7 @@ impl AppState {
         let heading =
             glam::Quat::from_rotation_y(self.camera_controller.yaw() + std::f32::consts::PI);
         let bytes = match assets::exporter::export_gaussians(
-            source.format,
+            format,
             &source.gaussians,
             to_file_frame * heading * self.scene.view_rotation(),
             to_file_frame * heading * self.camera.eye,
@@ -348,7 +368,7 @@ impl AppState {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("scene");
-        let out_name = format!("{stem}.{}", source.format.extension());
+        let out_name = format!("{stem}.{}", format.extension());
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -502,9 +522,10 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::RedrawRequested => {
-                if state.is_occluded || !state.is_focused {
+                if state.is_occluded || (!state.is_focused && !state.force_frame) {
                     return;
                 }
+                state.force_frame = false;
 
                 if !state.redraw_scheduler.try_begin_frame() {
                     return;
@@ -658,7 +679,7 @@ impl ApplicationHandler<UserEvent> for App {
             #[cfg(target_arch = "wasm32")]
             UserEvent::ExportRequested => {
                 if let Some(state) = &mut self.state {
-                    state.export();
+                    state.export(false);
                 }
             }
         }

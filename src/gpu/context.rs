@@ -281,6 +281,28 @@ impl GpuContext {
         self.device.create_texture(descriptor)
     }
 
+    pub fn write_texture_r8(&self, texture: &wgpu::Texture, data: &[u8], width: u32, height: u32) {
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
     pub fn create_sampler(&self, descriptor: &wgpu::SamplerDescriptor<'_>) -> wgpu::Sampler {
         self.device.create_sampler(descriptor)
     }
@@ -391,9 +413,11 @@ impl GpuContext {
         self.submit(encoder.finish());
 
         let (tx, rx) = std::sync::mpsc::channel();
-        buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
-        });
+        buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result);
+            });
         self.device.poll(wgpu::PollType::wait_indefinitely())?;
         rx.recv()??;
 
@@ -405,7 +429,11 @@ impl GpuContext {
         let mut pixels = Vec::with_capacity(width as usize * height as usize * 4);
         for row in mapped.chunks(padded_row as usize).take(height as usize) {
             for px in row[..width as usize * 4].chunks_exact(4) {
-                let (r, b) = if swap_rb { (px[2], px[0]) } else { (px[0], px[2]) };
+                let (r, b) = if swap_rb {
+                    (px[2], px[0])
+                } else {
+                    (px[0], px[2])
+                };
                 pixels.extend_from_slice(&[r, px[1], b, 255]);
             }
         }
