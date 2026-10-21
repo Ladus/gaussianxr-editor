@@ -19,6 +19,8 @@ pub struct Scene {
     pub gaussian_count: u32,
     pub time: f32,
     pub rotation: Quat,
+    // Translation in display space, applied after the rotation.
+    pub offset: Vec3,
 }
 
 impl Scene {
@@ -28,12 +30,24 @@ impl Scene {
             gaussian_count: 0,
             time: 0.0,
             rotation: Quat::IDENTITY,
+            offset: Vec3::ZERO,
         }
     }
 
-    pub fn rotate(&mut self, axis: Vec3, degrees: f32) {
+    // Rotates the scene around `pivot` (a display-space point) about `axis`.
+    pub fn rotate_about(&mut self, axis: Vec3, degrees: f32, pivot: Vec3) {
         let q = Quat::from_axis_angle(axis, degrees.to_radians());
         self.rotation = (q * self.rotation).normalize();
+        self.offset = q * (self.offset - pivot) + pivot;
+    }
+
+    // Maps file-space points to display space.
+    pub fn model_matrix(&self) -> Mat4 {
+        Mat4::from_translation(self.offset) * Mat4::from_quat(self.view_rotation())
+    }
+
+    pub fn display_to_model(&self, point: Vec3) -> Vec3 {
+        self.view_rotation().inverse() * (point - self.offset)
     }
 
     // Display-only: files are shown upside down to match the VR viewer's up axis.

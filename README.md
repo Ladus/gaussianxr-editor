@@ -38,7 +38,9 @@ the measure tool (`1`, `2`, `3`).*
 - **No near clipping in practice**: the near plane is 0.0001 so splats can be
   viewed from very close.
 - **Free scene rotation**: hold `X`, `Y` or `Z` and move the mouse up/down to
-  rotate the scene smoothly around that axis (the cursor is captured).
+  rotate the scene smoothly around the camera's right, up or view axis, with the
+  camera as the pivot (the cursor is captured). A 3x3 alignment grid is shown
+  while a key is held.
 - **Measure and scale tool**: place two points with `1` and `2` on the splat
   under a center crosshair (shown as a line with two dots so you can fly around
   and check the placement), then press `3` and type the real length in meters to
@@ -92,7 +94,7 @@ onto the window to load it.
 | Hold right mouse button + move mouse | Look around; the cursor is captured while held |
 | Mouse wheel | Increase / decrease movement speed (15% per step) |
 | `R` | Reset the view direction to the default heading (+Z) |
-| Hold `X` / `Y` / `Z` + move mouse up/down | Rotate the scene smoothly around that axis (0.3 degrees per pixel); the cursor is captured while held |
+| Hold `X` / `Y` / `Z` + move mouse up/down | Rotate the scene smoothly around the camera's X (right), Y (up) or Z (view) axis, pivoting on the camera (0.3 degrees per pixel); a 3x3 alignment grid is shown and the cursor is captured while held |
 | `1` / `2` | Place measurement point 1 / 2 on the splat under the center crosshair; a line and two dots are drawn between them |
 | `3` | Open the length prompt: type the real length of the line in meters (for example `0.6`), `Enter` scales the scene so the line has that length, `Esc` cancels |
 | `F1` | Show / hide the in-app help screen |
@@ -126,6 +128,18 @@ forward (+Z). Position and aim the camera before exporting.
 
 ```sh
 cargo run --release --features tile-renderer
+```
+
+### How to run
+
+```bash
+cargo run --release
+```
+
+### How to build
+
+```bash
+$env:RUSTFLAGS="-C target-feature=+crt-static"; cargo build --release
 ```
 
 ## License

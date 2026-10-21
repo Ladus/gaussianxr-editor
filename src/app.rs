@@ -227,14 +227,12 @@ impl AppState {
             }
             (KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ, true) => {
                 if !repeat {
-                    self.rotate_key = Some(code);
-                    self.update_cursor_capture();
+                    self.set_rotate_key(Some(code));
                 }
             }
             (KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ, false) => {
                 if self.rotate_key == Some(code) {
-                    self.rotate_key = None;
-                    self.update_cursor_capture();
+                    self.set_rotate_key(None);
                 }
             }
             _ => {
@@ -270,7 +268,7 @@ impl AppState {
             return;
         }
         let inverse = self.scene.view_rotation().inverse();
-        let origin = inverse * self.camera.eye;
+        let origin = self.scene.display_to_model(self.camera.eye);
         let direction = inverse * forward;
 
         match assets::pick::pick_along_ray(&source.gaussians, origin, direction) {
@@ -286,8 +284,7 @@ impl AppState {
 
     fn open_length_input(&mut self) {
         self.camera_controller.release_all();
-        self.rotate_key = None;
-        self.update_cursor_capture();
+        self.set_rotate_key(None);
 
         self.length_input = Some(String::new());
         self.refresh_length_prompt();
@@ -392,6 +389,14 @@ impl AppState {
         self.redraw_scheduler.request_redraw();
     }
 
+    // Holding an axis key rotates the scene and shows the alignment grid.
+    fn set_rotate_key(&mut self, key: Option<KeyCode>) {
+        self.rotate_key = key;
+        self.renderer.set_show_grid(key.is_some());
+        self.update_cursor_capture();
+        self.redraw_scheduler.request_redraw();
+    }
+
     fn set_looking(&mut self, looking: bool) {
         self.is_looking = looking;
         self.update_cursor_capture();
@@ -424,16 +429,23 @@ impl AppState {
     fn handle_mouse_motion(&mut self, dx: f64, dy: f64) {
         const SCENE_ROTATE_DEGREES_PER_PIXEL: f32 = 0.3;
 
+        // X/Y/Z are the camera's right, up and back axes, with the camera as the pivot.
+        let forward = (self.camera.target - self.camera.eye).normalize_or_zero();
+        let right = forward.cross(Vec3::Y).normalize_or_zero();
         let axis = match self.rotate_key {
-            Some(KeyCode::KeyX) => Some(Vec3::X),
-            Some(KeyCode::KeyY) => Some(Vec3::Y),
-            Some(KeyCode::KeyZ) => Some(Vec3::Z),
+            Some(KeyCode::KeyX) => Some(right),
+            Some(KeyCode::KeyY) => Some(right.cross(forward)),
+            Some(KeyCode::KeyZ) => Some(-forward),
             _ => None,
-        };
+        }
+        .filter(|axis| *axis != Vec3::ZERO);
 
         if let Some(axis) = axis {
-            self.scene
-                .rotate(axis, dy as f32 * SCENE_ROTATE_DEGREES_PER_PIXEL);
+            self.scene.rotate_about(
+                axis,
+                dy as f32 * SCENE_ROTATE_DEGREES_PER_PIXEL,
+                self.camera.eye,
+            );
             self.redraw_scheduler.request_redraw();
         } else if self.is_looking {
             self.camera_controller.rotate(dx as f32, dy as f32);
@@ -478,6 +490,7 @@ impl AppState {
         let gaussian_count = gaussians.len() as u32;
         self.scene.replace_gaussians(new_scene_type, gaussian_count);
         self.scene.rotation = glam::Quat::IDENTITY;
+        self.scene.offset = Vec3::ZERO;
 
         self.measure_points = [None, None];
         self.renderer.set_measure_points(self.measure_points);
@@ -554,7 +567,7 @@ impl AppState {
             format,
             &source.gaussians,
             to_file_frame * heading * self.scene.view_rotation(),
-            to_file_frame * heading * self.camera.eye,
+            to_file_frame * heading * (self.camera.eye - self.scene.offset),
         ) {
             Ok(bytes) => bytes,
             Err(e) => {
@@ -791,7 +804,7 @@ impl ApplicationHandler<UserEvent> for App {
                 state.is_focused = focused;
 
                 if !focused {
-                    state.rotate_key = None;
+                    state.set_rotate_key(None);
                     state.set_looking(false);
                     state.camera_controller.release_all();
                 }

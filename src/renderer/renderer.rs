@@ -4,6 +4,7 @@ use crate::redraw_scheduler::RedrawScheduler;
 use crate::resources::gaussians::Gaussians;
 use crate::scene::{Scene, SceneType};
 
+use super::grid::GridPass;
 use super::measure::MeasurePass;
 use super::text_overlay::{TextOverlay, TextStyle};
 use glam::{Mat4, Vec3};
@@ -21,7 +22,8 @@ NAVIGATION
   Hold right mouse      Look around
   Mouse wheel           Change movement speed
   R                     Reset view direction
-  Hold X / Y / Z        + move mouse up/down to rotate the scene
+  Hold X / Y / Z        + move mouse up/down: rotate the scene around
+                        the camera's right / up / view axis (3x3 grid)
 
 KEYS
   F1   Show / hide this help
@@ -65,6 +67,8 @@ pub struct Renderer {
 
     measure: MeasurePass,
     measure_points: [Option<Vec3>; 2],
+    grid: GridPass,
+    show_grid: bool,
     crosshair: TextOverlay,
     // Length prompt shown while the user types a measurement.
     input_prompt: TextOverlay,
@@ -107,6 +111,8 @@ impl Renderer {
             show_help: false,
             measure: MeasurePass::new(gpu),
             measure_points: [None, None],
+            grid: GridPass::new(gpu),
+            show_grid: false,
             crosshair: TextOverlay::new(
                 gpu,
                 "+",
@@ -131,6 +137,10 @@ impl Renderer {
         }
     }
 
+    pub fn set_show_grid(&mut self, show: bool) {
+        self.show_grid = show;
+    }
+
     pub fn set_measure_points(&mut self, points: [Option<Vec3>; 2]) {
         self.measure_points = points;
     }
@@ -150,9 +160,8 @@ impl Renderer {
     pub fn update(&mut self, gpu: &GpuContext, scene: &Scene, camera: &Camera) {
         self.backend.update_scene_uniform(gpu, scene, camera);
 
-        let view_proj = camera.build_projection_matrix()
-            * camera.build_view_matrix()
-            * Mat4::from_quat(scene.view_rotation());
+        let view_proj =
+            camera.build_projection_matrix() * camera.build_view_matrix() * scene.model_matrix();
         self.measure.update(
             gpu,
             view_proj,
@@ -193,6 +202,10 @@ impl Renderer {
 
         self.backend.render(&mut encoder, &output_view, true);
         self.measure.encode(&mut encoder, &output_view);
+
+        if self.show_grid {
+            self.grid.encode(gpu, &mut encoder, &output_view);
+        }
 
         if let Some(placeholder) = &self.placeholder {
             if !self.show_help {
