@@ -1,6 +1,6 @@
-# wgpu-gs-viewer (fork)
+# GaussianXR Editor
 
-This is a clone of
+This is a fork of
 [abist-co-ltd/wgpu-gs-viewer](https://github.com/abist-co-ltd/wgpu-gs-viewer), a
 Gaussian Splatting viewer written in Rust with wgpu. Refer to the upstream
 repository for the original rendering design and documentation.
