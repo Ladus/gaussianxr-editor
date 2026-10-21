@@ -1,6 +1,7 @@
 use super::format::FileFormat;
 use super::{ply_writer, sog_writer, transform};
 use crate::resources::gaussians::Gaussians;
+use crate::adjust::{ColorAdjustments, bake_adjustments};
 use glam::{Quat, Vec3};
 
 // The exported scene is rotated, then shifted so `origin` becomes (0, 0, 0).
@@ -9,9 +10,11 @@ pub fn export_gaussians(
     gaussians: &Gaussians,
     rotation: Quat,
     origin: Vec3,
+    adjustments: &ColorAdjustments,
 ) -> anyhow::Result<Vec<u8>> {
     let mut rotated = transform::rotate_gaussians(gaussians, rotation);
     transform::translate_gaussians(&mut rotated, -origin);
+    bake_adjustments(&mut rotated, adjustments);
 
     match format {
         FileFormat::Ply => Ok(ply_writer::write_ply(&rotated)),
@@ -57,7 +60,13 @@ mod tests {
     fn ply_round_trip() {
         let original = sample(50);
         let bytes =
-            export_gaussians(FileFormat::Ply, &original, Quat::IDENTITY, Vec3::ZERO).unwrap();
+            export_gaussians(
+                FileFormat::Ply,
+                &original,
+                Quat::IDENTITY,
+                Vec3::ZERO,
+                &ColorAdjustments::default(),
+            ).unwrap();
         let loaded = ply_loader::parse_gaussian_ply_bytes(&bytes).unwrap();
 
         for (a, b) in items(&original).iter().zip(items(&loaded)) {
@@ -73,7 +82,13 @@ mod tests {
     fn sog_round_trip_is_close() {
         let original = sample(300);
         let bytes =
-            export_gaussians(FileFormat::Sog, &original, Quat::IDENTITY, Vec3::ZERO).unwrap();
+            export_gaussians(
+                FileFormat::Sog,
+                &original,
+                Quat::IDENTITY,
+                Vec3::ZERO,
+                &ColorAdjustments::default(),
+            ).unwrap();
         let loaded = sog_loader::load_sog_from_bytes(&bytes).unwrap();
 
         assert_eq!(items(&loaded).len(), 300);

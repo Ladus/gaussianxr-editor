@@ -7,7 +7,8 @@ use crate::scene::{Scene, SceneType};
 use super::grid::GridPass;
 use super::measure::MeasurePass;
 use super::text_overlay::{TextOverlay, TextStyle};
-use glam::{Mat4, Vec3};
+use super::ui::{UiBatch, UiRenderer};
+use glam::Vec3;
 
 const PLACEHOLDER_TEXT: &str = "Drag your scene here to load it\n\nPress F1 for help";
 
@@ -34,6 +35,12 @@ MEASURE (set the real-world scale)
   1 / 2   Place point 1 / 2 on the splat under the + crosshair
   3       Type the line length in meters (for example 0.6) and press
           Enter. The whole scene is scaled so the line has that length.
+
+ADJUST (color grading)
+  Click the Adjust button (top right) to open the side panel. Drag the
+  sliders for temperature, tint, exposure, contrast, highlights, shadows,
+  saturation, vibrance and hue. Click a slider name to reset it. The
+  adjustments are baked into F2 / F3 exports.
 
 EXPORT
   Each export creates a folder named after the loaded file. It holds
@@ -69,6 +76,7 @@ pub struct Renderer {
     measure_points: [Option<Vec3>; 2],
     grid: GridPass,
     show_grid: bool,
+    ui: UiRenderer,
     crosshair: TextOverlay,
     // Length prompt shown while the user types a measurement.
     input_prompt: TextOverlay,
@@ -113,6 +121,7 @@ impl Renderer {
             measure_points: [None, None],
             grid: GridPass::new(gpu),
             show_grid: false,
+            ui: UiRenderer::new(gpu),
             crosshair: TextOverlay::new(
                 gpu,
                 "+",
@@ -157,6 +166,10 @@ impl Renderer {
         self.show_help = !self.show_help;
     }
 
+    pub fn help_visible(&self) -> bool {
+        self.show_help
+    }
+
     pub fn update(&mut self, gpu: &GpuContext, scene: &Scene, camera: &Camera) {
         self.backend.update_scene_uniform(gpu, scene, camera);
 
@@ -174,6 +187,7 @@ impl Renderer {
         &mut self,
         gpu: &GpuContext,
         redraw_scheduler: &RedrawScheduler,
+        ui: &UiBatch,
     ) -> anyhow::Result<RenderStatus> {
         if !gpu.is_surface_configured() {
             redraw_scheduler.cancel_frame();
@@ -206,6 +220,8 @@ impl Renderer {
         if self.show_grid {
             self.grid.encode(gpu, &mut encoder, &output_view);
         }
+
+        self.ui.encode(gpu, &mut encoder, &output_view, ui);
 
         if let Some(placeholder) = &self.placeholder {
             if !self.show_help {

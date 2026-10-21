@@ -1,3 +1,4 @@
+use crate::adjust::ColorAdjustments;
 use glam::*;
 
 pub const TIME_SPEED: f32 = 0.5;
@@ -21,6 +22,7 @@ pub struct Scene {
     pub rotation: Quat,
     // Translation in display space, applied after the rotation.
     pub offset: Vec3,
+    pub adjustments: ColorAdjustments,
 }
 
 impl Scene {
@@ -31,6 +33,7 @@ impl Scene {
             time: 0.0,
             rotation: Quat::IDENTITY,
             offset: Vec3::ZERO,
+            adjustments: ColorAdjustments::default(),
         }
     }
 

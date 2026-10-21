@@ -48,7 +48,41 @@ struct SceneUniform {
     tan_fov: vec2<f32>,
     time: f32,
     pad: u32,
+    grade_a: vec4<f32>, // exposure gain, contrast, saturation, vibrance
+    grade_b: vec4<f32>, // highlights, shadows, hue (radians), enabled
+    grade_c: vec4<f32>, // white balance gains
 };
+
+// Keep in sync with ColorAdjustments::apply in src/adjust.rs.
+fn apply_grade(rgb_in: vec3<f32>) -> vec3<f32> {
+    if scene.grade_b.w < 0.5 {
+        return rgb_in;
+    }
+
+    var rgb = rgb_in * scene.grade_c.xyz * scene.grade_a.x;
+
+    let l0 = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let shadow_weight = 1.0 - smoothstep(0.0, 0.5, l0);
+    let highlight_weight = smoothstep(0.5, 1.0, l0);
+    let gain = 1.0 + 0.8 * scene.grade_b.y * shadow_weight + 0.5 * scene.grade_b.x * highlight_weight;
+    rgb = rgb * gain + vec3<f32>(0.12 * scene.grade_b.y * shadow_weight);
+
+    rgb = (rgb - vec3<f32>(0.5)) * scene.grade_a.y + vec3<f32>(0.5);
+
+    let l1 = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let chroma = clamp(max(rgb.x, max(rgb.y, rgb.z)) - min(rgb.x, min(rgb.y, rgb.z)), 0.0, 1.0);
+    let saturation = scene.grade_a.z * (1.0 + scene.grade_a.w * (1.0 - chroma));
+    rgb = vec3<f32>(l1) + (rgb - vec3<f32>(l1)) * saturation;
+
+    let s = sin(scene.grade_b.z);
+    let k = cos(scene.grade_b.z);
+    let out = vec3<f32>(
+        rgb.x * (0.213 + k * 0.787 - s * 0.213) + rgb.y * (0.715 - k * 0.715 - s * 0.715) + rgb.z * (0.072 - k * 0.072 + s * 0.928),
+        rgb.x * (0.213 - k * 0.213 + s * 0.143) + rgb.y * (0.715 + k * 0.285 + s * 0.140) + rgb.z * (0.072 - k * 0.072 - s * 0.283),
+        rgb.x * (0.213 - k * 0.213 - s * 0.787) + rgb.y * (0.715 - k * 0.715 + s * 0.715) + rgb.z * (0.072 + k * 0.928 + s * 0.072),
+    );
+    return max(out, vec3<f32>(0.0));
+}
 
 struct DepthRange {
     min_bits: atomic<u32>,
@@ -383,7 +417,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let minor_axis = minor_direction * minor_length;
 
     let opacity = sigmoid(g.opacity);
-    let rgb = eval_sh16(idx, scene.view_pos.xyz, g.position);
+    let rgb = apply_grade(eval_sh16(idx, scene.view_pos.xyz, g.position));
 
     let extent = select(
         0.0,

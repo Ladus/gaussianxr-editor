@@ -1,3 +1,4 @@
+use crate::adjust::ColorAdjustments;
 use crate::camera::Camera;
 use crate::gpu::context::GpuContext;
 use crate::scene::Scene;
@@ -16,6 +17,8 @@ pub struct SceneUniform {
     tan_fov: [f32; 2],
     time: f32,
     _pad0: u32,
+    // Color grading, see ColorAdjustments::uniform.
+    grade: [[f32; 4]; 3],
 }
 
 impl SceneUniform {
@@ -30,6 +33,7 @@ impl SceneUniform {
             tan_fov: [0.0, 0.0],
             time: 0.0,
             _pad0: 0,
+            grade: ColorAdjustments::default().uniform(),
         }
     }
 
@@ -53,6 +57,7 @@ impl SceneUniform {
         self.update_camera(camera, scene.model_matrix());
         self.gaussian_count = scene.gaussian_count;
         self.time = scene.time;
+        self.grade = scene.adjustments.uniform();
     }
 }
 

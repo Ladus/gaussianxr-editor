@@ -45,6 +45,10 @@ the measure tool (`1`, `2`, `3`).*
   under a center crosshair (shown as a line with two dots so you can fly around
   and check the placement), then press `3` and type the real length in meters to
   scale the whole scene so the line has that length.
+- **Color adjustment sidebar** (optional, opened with the `Adjust` button at the
+  top right): Lightroom-style sliders for temperature, tint, exposure, contrast,
+  highlights, shadows, saturation, vibrance and hue. The viewer shows the result
+  live and the adjustments are baked into exported files.
 - **Reset view** key to look straight ahead again.
 - **Default orientation**: scenes are displayed rotated 180 degrees around Z to
   match the VR viewer's up axis. This is display-only and is not baked into
@@ -98,6 +102,8 @@ onto the window to load it.
 | `1` / `2` | Place measurement point 1 / 2 on the splat under the center crosshair; a line and two dots are drawn between them |
 | `3` | Open the length prompt: type the real length of the line in meters (for example `0.6`), `Enter` scales the scene so the line has that length, `Esc` cancels |
 | `F1` | Show / hide the in-app help screen |
+| Left click `Adjust` (top right) | Open the color adjustment sidebar; `x` closes it |
+| Drag a slider in the sidebar | Change that adjustment (temperature, tint, exposure, contrast, highlights, shadows, saturation, vibrance, hue); click a slider's name to reset it, or `Reset all` to reset everything |
 | `F2` | Export the scene as-is, in the loaded file's format (`.ply` or `.sog`) |
 | `F3` | Export the scene as an optimized `.sog`, even if a `.ply` was loaded |
 | Export button | Export the scene (web) |
@@ -123,6 +129,9 @@ forward (+Z). Position and aim the camera before exporting.
 - PLY export is exact apart from float rounding. SOG export re-quantizes the
   data and is lossy.
 - Exporting again overwrites earlier output with the same name.
+- Color adjustments from the sidebar are baked into the exported colors (the
+  base color exactly; view-dependent colors are scaled to match). Loading a new
+  file resets the sliders.
 
 ### Optional: Tile renderer
 

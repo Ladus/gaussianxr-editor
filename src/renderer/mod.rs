@@ -6,3 +6,4 @@ pub mod renderer;
 pub mod screen_blit;
 mod text_overlay;
 pub mod tile;
+pub mod ui;

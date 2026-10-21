@@ -1,5 +1,6 @@
 #![allow(clippy::module_inception)]
 
+mod adjust;
 mod app;
 mod assets;
 mod camera;
@@ -8,6 +9,7 @@ mod redraw_scheduler;
 mod renderer;
 mod resources;
 mod scene;
+mod sidebar;
 
 use winit::event_loop::EventLoop;
 

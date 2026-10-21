@@ -1,14 +1,14 @@
 use crate::gpu::context::GpuContext;
 
-const GLYPH_WIDTH: usize = 5;
-const GLYPH_HEIGHT: usize = 7;
+pub(super) const GLYPH_WIDTH: usize = 5;
+pub(super) const GLYPH_HEIGHT: usize = 7;
 const GLYPH_ADVANCE: usize = GLYPH_WIDTH + 1;
 const LINE_ADVANCE: usize = GLYPH_HEIGHT + 2;
 const PADDING: usize = 4;
 
 // Classic 5x7 font for ASCII 0x20..=0x7E: five columns per glyph, bit 0 is the top row.
 #[rustfmt::skip]
-const FONT: [[u8; GLYPH_WIDTH]; 95] = [
+pub(super) const FONT: [[u8; GLYPH_WIDTH]; 95] = [
     [0x00, 0x00, 0x00, 0x00, 0x00], // ' '
     [0x00, 0x00, 0x5F, 0x00, 0x00], // !
     [0x00, 0x07, 0x00, 0x07, 0x00], // "

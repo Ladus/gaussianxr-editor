@@ -13,9 +13,13 @@ use crate::{
     camera::{Camera, CameraController, CameraState},
     gpu::context::GpuContext,
     redraw_scheduler::RedrawScheduler,
-    renderer::renderer::{RenderStatus, Renderer},
+    renderer::{
+        renderer::{RenderStatus, Renderer},
+        ui::UiBatch,
+    },
     resources::gaussians::Gaussians,
     scene::{Scene, SceneType},
+    sidebar::Sidebar,
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -81,6 +85,10 @@ pub struct AppState {
     // Digits typed so far while the length prompt is open.
     length_input: Option<String>,
 
+    // Color adjustment panel and the last known cursor position in window pixels.
+    sidebar: Sidebar,
+    cursor_pos: (f32, f32),
+
     redraw_scheduler: RedrawScheduler,
 }
 
@@ -129,6 +137,8 @@ impl AppState {
             cursor_captured: false,
             measure_points: [None, None],
             length_input: None,
+            sidebar: Sidebar::default(),
+            cursor_pos: (0.0, 0.0),
             redraw_scheduler,
         })
     }
@@ -166,7 +176,14 @@ impl AppState {
     }
 
     pub fn render(&mut self) -> anyhow::Result<RenderStatus> {
-        let status = self.renderer.render(&self.gpu, &self.redraw_scheduler)?;
+        let mut ui = UiBatch::default();
+        if !self.renderer.help_visible() {
+            self.sidebar.draw(&mut ui, self.screen_size());
+        }
+
+        let status = self
+            .renderer
+            .render(&self.gpu, &self.redraw_scheduler, &ui)?;
 
         if status == RenderStatus::Submitted {
             self.update_fps_counter();
@@ -426,6 +443,47 @@ impl AppState {
         }
     }
 
+    fn screen_size(&self) -> (f32, f32) {
+        let size = self.gpu.surface_size();
+        (size.width as f32, size.height as f32)
+    }
+
+    fn sync_adjustments(&mut self) {
+        self.scene.adjustments = self.sidebar.values;
+        self.redraw_scheduler.request_redraw();
+    }
+
+    fn handle_cursor_moved(&mut self, x: f64, y: f64) {
+        self.cursor_pos = (x as f32, y as f32);
+        if self.cursor_captured || self.renderer.help_visible() {
+            return;
+        }
+
+        let screen = self.screen_size();
+        if self.sidebar.drag(self.cursor_pos, screen) {
+            self.sync_adjustments();
+        } else if self.sidebar.update_hover(self.cursor_pos, screen) {
+            self.redraw_scheduler.request_redraw();
+        }
+    }
+
+    fn handle_left_button(&mut self, pressed: bool) {
+        if self.renderer.help_visible() {
+            return;
+        }
+
+        if pressed {
+            let (consumed, changed) = self.sidebar.press(self.cursor_pos, self.screen_size());
+            if changed {
+                self.sync_adjustments();
+            } else if consumed {
+                self.redraw_scheduler.request_redraw();
+            }
+        } else if self.sidebar.release() {
+            self.redraw_scheduler.request_redraw();
+        }
+    }
+
     fn handle_mouse_motion(&mut self, dx: f64, dy: f64) {
         const SCENE_ROTATE_DEGREES_PER_PIXEL: f32 = 0.3;
 
@@ -491,6 +549,12 @@ impl AppState {
         self.scene.replace_gaussians(new_scene_type, gaussian_count);
         self.scene.rotation = glam::Quat::IDENTITY;
         self.scene.offset = Vec3::ZERO;
+
+        // Adjustments belong to the previous scene; keep the panel open or closed as is.
+        let sidebar_open = self.sidebar.open;
+        self.sidebar.reset();
+        self.sidebar.open = sidebar_open;
+        self.scene.adjustments = self.sidebar.values;
 
         self.measure_points = [None, None];
         self.renderer.set_measure_points(self.measure_points);
@@ -568,6 +632,7 @@ impl AppState {
             &source.gaussians,
             to_file_frame * heading * self.scene.view_rotation(),
             to_file_frame * heading * (self.camera.eye - self.scene.offset),
+            &self.scene.adjustments,
         ) {
             Ok(bytes) => bytes,
             Err(e) => {
@@ -788,6 +853,14 @@ impl ApplicationHandler<UserEvent> for App {
                     },
                 ..
             } => state.handle_key(event_loop, code, key_state.is_pressed(), repeat),
+            WindowEvent::MouseInput {
+                state: button_state,
+                button: MouseButton::Left,
+                ..
+            } => state.handle_left_button(button_state.is_pressed()),
+            WindowEvent::CursorMoved { position, .. } => {
+                state.handle_cursor_moved(position.x, position.y);
+            }
             WindowEvent::MouseInput {
                 state: button_state,
                 button: MouseButton::Right,
