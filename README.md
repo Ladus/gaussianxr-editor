@@ -10,29 +10,25 @@ compliant with Arcturus GaussianXR for the Steam Frame: fly to the spot you want
 as the origin, aim the camera, orient the scene, and export the scene together
 with its gallery image.
 
-![Rotating and scaling a scene](.attachments/RotatingAndScaling.gif)
+| Rotating with 3x3 grid | Scaling |
+| --- | --- |
+| ![Rotating with 3x3 grid](.attachments/RotatingWithGrid.gif) | ![Scaling](.attachments/Scaling.gif) |
+| Color Adjustments | Exporting |
+| ![Color Adjustments](.attachments/ColorAdjustments.gif) | ![Exporting](.attachments/Exporting.gif) |
+| Start screen | Help screen (`F1`) |
+| ![Start screen](.attachments/StartScreen.png) | ![Instruction screen](.attachments/InstructionScreen.png) |
 
-*Rotating the scene with `X`/`Y`/`Z` and scaling it to a real-world size with
+*Rotating the scene with `X`/`Y`/`Z` keys and scaling it to a real-world size with
 the measure tool (`1`, `2`, `3`).*
 
-## Screenshots
-
-### Viewing splats
+## Viewing splats
 
 ![A pumpkin splat in the viewer](.attachments/PumpkinSplat.png)
-
-### User interface
-
-| Start screen | Help screen (`F1`) |
-| --- | --- |
-| ![Start screen](.attachments/StartScreen.png) | ![Instruction screen](.attachments/InstructionScreen.png) |
 
 ## Changes from upstream
 
 - **First-person fly camera** replaces the orbit camera: move with
   `W`/`A`/`S`/`D`, look by holding the right mouse button.
-- **Mouse capture**: the cursor is hidden and captured while the right mouse
-  button is held, so it never hits the screen edge.
 - **Adjustable movement speed** with the mouse wheel, plus a `Shift` speed
   boost.
 - **No near clipping in practice**: the near plane is 0.0001 so splats can be
@@ -46,7 +42,7 @@ the measure tool (`1`, `2`, `3`).*
   and check the placement), then press `3` and type the real length in meters to
   scale the whole scene so the line has that length.
 - **Color adjustment sidebar** (optional, opened with the `Adjust` button at the
-  top right): Lightroom-style sliders for temperature, tint, exposure, contrast,
+  top right): Photo editor-style sliders for temperature, tint, exposure, contrast,
   highlights, shadows, saturation, vibrance and hue. The viewer shows the result
   live and the adjustments are baked into exported files. The same panel has
   `Rotate X/Y/Z` sliders (same axes as the `X`/`Y`/`Z` keys, with the alignment
@@ -81,9 +77,7 @@ the measure tool (`1`, `2`, `3`).*
 
 ## How to use
 
-Run the native viewer:
-
-```sh
+```bash
 cargo run --release
 ```
 
@@ -141,19 +135,7 @@ forward (+Z). Position and aim the camera before exporting.
   base color exactly; view-dependent colors are scaled to match). Loading a new
   file resets the sliders.
 
-### Optional: Tile renderer
-
-```sh
-cargo run --release --features tile-renderer
-```
-
-### How to run
-
-```bash
-cargo run --release
-```
-
-### How to build
+## How to build
 
 ```bash
 $env:RUSTFLAGS="-C target-feature=+crt-static"; cargo build --release
