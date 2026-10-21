@@ -12,8 +12,10 @@ const MEASURE_HEADER_TOP: f32 = 300.0;
 const MEASURE_TOP: f32 = 310.0;
 const BUTTON_HEIGHT: f32 = 12.0;
 const BUTTON_STEP: f32 = 14.0;
+const EXPORT_HEADER_TOP: f32 = 356.0;
+const EXPORT_TOP: f32 = 366.0;
 // Panel content height in font pixels; the UI scale is chosen so this fits the window.
-const CONTENT_HEIGHT: f32 = 352.0;
+const CONTENT_HEIGHT: f32 = 394.0;
 
 const COLOR_COUNT: usize = SLIDERS.len();
 const ROTATION_COUNT: usize = 3;
@@ -61,6 +63,7 @@ pub enum Target {
     Place(usize),
     Enter,
     Clear,
+    Export(bool),
     Panel,
 }
 
@@ -70,6 +73,8 @@ pub enum Action {
     PlacePoint(usize),
     EnterMeasurement,
     ClearMeasurement,
+    // The flag forces .sog output, like F3.
+    Export(bool),
 }
 
 #[derive(Default)]
@@ -96,6 +101,8 @@ struct Layout {
     place: [Rect; 2],
     enter: Rect,
     clear: Rect,
+    export_header: (f32, f32),
+    export: [Rect; 2],
 }
 
 fn slider_top(index: usize) -> f32 {
@@ -165,6 +172,15 @@ fn layout(screen: (f32, f32)) -> Layout {
         ],
         enter: Rect::new(inner_x, button_row(1), inner_w, BUTTON_HEIGHT * u),
         clear: Rect::new(inner_x, button_row(2), inner_w, BUTTON_HEIGHT * u),
+        export_header: (inner_x, EXPORT_HEADER_TOP * u),
+        export: [0, 1].map(|row| {
+            Rect::new(
+                inner_x,
+                (EXPORT_TOP + row as f32 * BUTTON_STEP) * u,
+                inner_w,
+                BUTTON_HEIGHT * u,
+            )
+        }),
     }
 }
 
@@ -237,6 +253,11 @@ impl Sidebar {
         if layout.clear.contains(pos) {
             return Some(Target::Clear);
         }
+        for (i, rect) in layout.export.iter().enumerate() {
+            if rect.contains(pos) {
+                return Some(Target::Export(i == 1));
+            }
+        }
         layout.panel.contains(pos).then_some(Target::Panel)
     }
 
@@ -297,6 +318,7 @@ impl Sidebar {
             Some(Target::Place(i)) => outcome.action = Some(Action::PlacePoint(i)),
             Some(Target::Enter) => outcome.action = Some(Action::EnterMeasurement),
             Some(Target::Clear) => outcome.action = Some(Action::ClearMeasurement),
+            Some(Target::Export(force_sog)) => outcome.action = Some(Action::Export(force_sog)),
         }
         outcome
     }
@@ -438,5 +460,21 @@ impl Sidebar {
         );
         button(batch, l.enter, Target::Enter, "Enter measurement", false);
         button(batch, l.clear, Target::Clear, "Clear", false);
+
+        batch.text(l.export_header.0, l.export_header.1, u, "Export", DIM);
+        button(
+            batch,
+            l.export[0],
+            Target::Export(false),
+            "Export original",
+            false,
+        );
+        button(
+            batch,
+            l.export[1],
+            Target::Export(true),
+            "Export as .sog",
+            false,
+        );
     }
 }

@@ -110,6 +110,7 @@ onto the window to load it.
 | `Place 1` / `Place 2` (sidebar) | Same as keys `1` / `2`: place measurement point 1 / 2 at the crosshair |
 | `Enter measurement` (sidebar) | Same as key `3`: open the length prompt to scale the scene |
 | `Clear` (sidebar) | Remove both measurement points and the line |
+| `Export original` / `Export as .sog` (sidebar) | Same as `F2` / `F3`: export in the loaded file's format, or always as an optimized `.sog` |
 | Drag a slider in the sidebar | Change that adjustment (temperature, tint, exposure, contrast, highlights, shadows, saturation, vibrance, hue); click a slider's name to reset it, or `Reset all` to reset everything |
 | `F2` | Export the scene as-is, in the loaded file's format (`.ply` or `.sog`) |
 | `F3` | Export the scene as an optimized `.sog`, even if a `.ply` was loaded |

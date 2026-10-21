@@ -43,6 +43,7 @@ ADJUST (color grading)
   adjustments are baked into F2 / F3 exports. The panel also has Rotate
   X / Y / Z sliders (same as holding the X / Y / Z keys) and Measure
   buttons: Place 1 / Place 2 at the crosshair, Enter measurement, Clear.
+  Export original / Export as .sog buttons do the same as F2 / F3.
 
 EXPORT
   Each export creates a folder named after the loaded file. It holds

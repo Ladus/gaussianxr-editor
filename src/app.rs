@@ -74,6 +74,10 @@ pub struct AppState {
     // Draw one frame even if the window is unfocused (e.g. right after a drop from Explorer).
     force_frame: bool,
 
+    // An export waits for the next frame so the "Exporting..." overlay shows first.
+    pending_export: Option<bool>,
+    exporting: bool,
+
     is_looking: bool,
 
     // Axis key (X/Y/Z) currently held to rotate the scene with the mouse.
@@ -132,6 +136,8 @@ impl AppState {
             is_focused: true,
             is_occluded: false,
             force_frame: false,
+            pending_export: None,
+            exporting: false,
             is_looking: false,
             rotate_key: None,
             cursor_captured: false,
@@ -180,6 +186,22 @@ impl AppState {
         if !self.renderer.help_visible() {
             let points_set = self.measure_points.map(|p| p.is_some());
             self.sidebar.draw(&mut ui, self.screen_size(), points_set);
+        }
+
+        if self.exporting {
+            let (width, height) = self.screen_size();
+            ui.rect(0.0, 0.0, width, height, [0.0, 0.0, 0.0, 0.55]);
+
+            let label = "Exporting...";
+            let scale = (height / 160.0).floor().clamp(2.0, 8.0);
+            let label_width = UiBatch::text_width(label, scale);
+            ui.text(
+                ((width - label_width) / 2.0).floor(),
+                ((height - 7.0 * scale) / 2.0).floor(),
+                scale,
+                label,
+                [1.0, 1.0, 1.0, 1.0],
+            );
         }
 
         let status = self
@@ -235,12 +257,12 @@ impl AppState {
             }
             (KeyCode::F2, true) => {
                 if !repeat {
-                    self.export(false);
+                    self.request_export(false);
                 }
             }
             (KeyCode::F3, true) => {
                 if !repeat {
-                    self.export(true);
+                    self.request_export(true);
                 }
             }
             (KeyCode::KeyX | KeyCode::KeyY | KeyCode::KeyZ, true) => {
@@ -485,6 +507,7 @@ impl AppState {
             Some(SidebarAction::PlacePoint(index)) => self.place_measure_point(index),
             Some(SidebarAction::EnterMeasurement) => self.open_length_input(),
             Some(SidebarAction::ClearMeasurement) => self.clear_measure_points(),
+            Some(SidebarAction::Export(force_sog)) => self.request_export(force_sog),
             None => {}
         }
 
@@ -647,9 +670,35 @@ impl AppState {
         Ok(())
     }
 
+    pub fn request_export(&mut self, force_sog: bool) {
+        if self.source.is_none() {
+            log::warn!("nothing to export");
+            return;
+        }
+        if self.pending_export.is_some() {
+            return;
+        }
+
+        self.pending_export = Some(force_sog);
+        self.exporting = true;
+        self.force_frame = true;
+        self.redraw_scheduler.request_redraw();
+    }
+
+    // Runs after a frame with the overlay has been presented, because export blocks.
+    fn run_pending_export(&mut self) {
+        let Some(force_sog) = self.pending_export.take() else {
+            return;
+        };
+
+        self.export(force_sog);
+        self.exporting = false;
+        self.redraw_scheduler.request_redraw();
+    }
+
     // Writes the loaded scene with the current rotation baked in and the camera as origin.
     // `force_sog` exports as .sog even when the loaded file was a .ply.
-    pub fn export(&mut self, force_sog: bool) {
+    fn export(&mut self, force_sog: bool) {
         self.renderer.update(&self.gpu, &self.scene, &self.camera);
 
         let Some(source) = &self.source else {
@@ -864,7 +913,7 @@ impl ApplicationHandler<UserEvent> for App {
                 state.update();
 
                 match state.render() {
-                    Ok(RenderStatus::Submitted) => {}
+                    Ok(RenderStatus::Submitted) => state.run_pending_export(),
 
                     Ok(RenderStatus::Skipped) => {
                         state.redraw_scheduler.cancel_frame();
@@ -1018,7 +1067,7 @@ impl ApplicationHandler<UserEvent> for App {
             #[cfg(target_arch = "wasm32")]
             UserEvent::ExportRequested => {
                 if let Some(state) = &mut self.state {
-                    state.export(false);
+                    state.request_export(false);
                 }
             }
         }
