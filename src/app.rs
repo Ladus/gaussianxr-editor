@@ -19,7 +19,7 @@ use crate::{
     },
     resources::gaussians::Gaussians,
     scene::{Scene, SceneType},
-    sidebar::Sidebar,
+    sidebar::{Action as SidebarAction, Outcome as SidebarOutcome, Sidebar},
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -178,7 +178,8 @@ impl AppState {
     pub fn render(&mut self) -> anyhow::Result<RenderStatus> {
         let mut ui = UiBatch::default();
         if !self.renderer.help_visible() {
-            self.sidebar.draw(&mut ui, self.screen_size());
+            let points_set = self.measure_points.map(|p| p.is_some());
+            self.sidebar.draw(&mut ui, self.screen_size(), points_set);
         }
 
         let status = self
@@ -406,10 +407,15 @@ impl AppState {
         self.redraw_scheduler.request_redraw();
     }
 
-    // Holding an axis key rotates the scene and shows the alignment grid.
+    // Holding an axis key or a rotation slider rotates the scene and shows the alignment grid.
+    fn update_grid(&mut self) {
+        self.renderer
+            .set_show_grid(self.rotate_key.is_some() || self.sidebar.is_rotating());
+    }
+
     fn set_rotate_key(&mut self, key: Option<KeyCode>) {
         self.rotate_key = key;
-        self.renderer.set_show_grid(key.is_some());
+        self.update_grid();
         self.update_cursor_capture();
         self.redraw_scheduler.request_redraw();
     }
@@ -448,57 +454,91 @@ impl AppState {
         (size.width as f32, size.height as f32)
     }
 
-    fn sync_adjustments(&mut self) {
-        self.scene.adjustments = self.sidebar.values;
+    // X/Y/Z are the camera's right, up and back axes (the scene pivots on the camera).
+    fn camera_axis(&self, index: usize) -> Option<Vec3> {
+        let forward = (self.camera.target - self.camera.eye).normalize_or_zero();
+        let right = forward.cross(Vec3::Y).normalize_or_zero();
+        let axis = match index {
+            0 => right,
+            1 => right.cross(forward),
+            _ => -forward,
+        };
+        (axis != Vec3::ZERO).then_some(axis)
+    }
+
+    fn sidebar_blocked(&self) -> bool {
+        self.renderer.help_visible() || self.length_input.is_some()
+    }
+
+    fn apply_sidebar_outcome(&mut self, outcome: SidebarOutcome) {
+        if outcome.adjustments_changed {
+            self.scene.adjustments = self.sidebar.values;
+        }
+        if let Some((axis_index, degrees)) = outcome.rotate {
+            if let Some(axis) = self.camera_axis(axis_index) {
+                self.scene.rotate_about(axis, degrees, self.camera.eye);
+            }
+        }
+        self.update_grid();
+
+        match outcome.action {
+            Some(SidebarAction::PlacePoint(index)) => self.place_measure_point(index),
+            Some(SidebarAction::EnterMeasurement) => self.open_length_input(),
+            Some(SidebarAction::ClearMeasurement) => self.clear_measure_points(),
+            None => {}
+        }
+
+        if outcome.consumed || outcome.adjustments_changed {
+            self.redraw_scheduler.request_redraw();
+        }
+    }
+
+    fn clear_measure_points(&mut self) {
+        self.measure_points = [None, None];
+        self.renderer.set_measure_points(self.measure_points);
         self.redraw_scheduler.request_redraw();
     }
 
     fn handle_cursor_moved(&mut self, x: f64, y: f64) {
         self.cursor_pos = (x as f32, y as f32);
-        if self.cursor_captured || self.renderer.help_visible() {
+        if self.cursor_captured || self.sidebar_blocked() {
             return;
         }
 
         let screen = self.screen_size();
-        if self.sidebar.drag(self.cursor_pos, screen) {
-            self.sync_adjustments();
+        let outcome = self.sidebar.drag(self.cursor_pos, screen);
+        if outcome.consumed {
+            self.apply_sidebar_outcome(outcome);
         } else if self.sidebar.update_hover(self.cursor_pos, screen) {
             self.redraw_scheduler.request_redraw();
         }
     }
 
     fn handle_left_button(&mut self, pressed: bool) {
-        if self.renderer.help_visible() {
+        if self.sidebar_blocked() {
             return;
         }
 
-        if pressed {
-            let (consumed, changed) = self.sidebar.press(self.cursor_pos, self.screen_size());
-            if changed {
-                self.sync_adjustments();
-            } else if consumed {
-                self.redraw_scheduler.request_redraw();
-            }
-        } else if self.sidebar.release() {
-            self.redraw_scheduler.request_redraw();
-        }
+        let outcome = if pressed {
+            self.sidebar.press(self.cursor_pos, self.screen_size())
+        } else {
+            self.sidebar.release()
+        };
+        self.apply_sidebar_outcome(outcome);
     }
 
     fn handle_mouse_motion(&mut self, dx: f64, dy: f64) {
         const SCENE_ROTATE_DEGREES_PER_PIXEL: f32 = 0.3;
 
-        // X/Y/Z are the camera's right, up and back axes, with the camera as the pivot.
-        let forward = (self.camera.target - self.camera.eye).normalize_or_zero();
-        let right = forward.cross(Vec3::Y).normalize_or_zero();
-        let axis = match self.rotate_key {
-            Some(KeyCode::KeyX) => Some(right),
-            Some(KeyCode::KeyY) => Some(right.cross(forward)),
-            Some(KeyCode::KeyZ) => Some(-forward),
+        // X/Y/Z keys rotate the scene about the same camera axes as the sidebar sliders.
+        let axis_index = match self.rotate_key {
+            Some(KeyCode::KeyX) => Some(0),
+            Some(KeyCode::KeyY) => Some(1),
+            Some(KeyCode::KeyZ) => Some(2),
             _ => None,
-        }
-        .filter(|axis| *axis != Vec3::ZERO);
+        };
 
-        if let Some(axis) = axis {
+        if let Some(axis) = axis_index.and_then(|index| self.camera_axis(index)) {
             self.scene.rotate_about(
                 axis,
                 dy as f32 * SCENE_ROTATE_DEGREES_PER_PIXEL,

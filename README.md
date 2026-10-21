@@ -48,7 +48,10 @@ the measure tool (`1`, `2`, `3`).*
 - **Color adjustment sidebar** (optional, opened with the `Adjust` button at the
   top right): Lightroom-style sliders for temperature, tint, exposure, contrast,
   highlights, shadows, saturation, vibrance and hue. The viewer shows the result
-  live and the adjustments are baked into exported files.
+  live and the adjustments are baked into exported files. The same panel has
+  `Rotate X/Y/Z` sliders (same axes as the `X`/`Y`/`Z` keys, with the alignment
+  grid shown while dragging) and measurement buttons (`Place 1`, `Place 2`,
+  `Enter measurement`, `Clear`).
 - **Reset view** key to look straight ahead again.
 - **Default orientation**: scenes are displayed rotated 180 degrees around Z to
   match the VR viewer's up axis. This is display-only and is not baked into
@@ -103,6 +106,10 @@ onto the window to load it.
 | `3` | Open the length prompt: type the real length of the line in meters (for example `0.6`), `Enter` scales the scene so the line has that length, `Esc` cancels |
 | `F1` | Show / hide the in-app help screen |
 | Left click `Adjust` (top right) | Open the color adjustment sidebar; `x` closes it |
+| Drag a `Rotate X` / `Rotate Y` / `Rotate Z` slider | Rotate the scene around the camera's right / up / view axis like holding `X` / `Y` / `Z` and moving the mouse; the 3x3 alignment grid is shown while dragging and the slider springs back to the center when released |
+| `Place 1` / `Place 2` (sidebar) | Same as keys `1` / `2`: place measurement point 1 / 2 at the crosshair |
+| `Enter measurement` (sidebar) | Same as key `3`: open the length prompt to scale the scene |
+| `Clear` (sidebar) | Remove both measurement points and the line |
 | Drag a slider in the sidebar | Change that adjustment (temperature, tint, exposure, contrast, highlights, shadows, saturation, vibrance, hue); click a slider's name to reset it, or `Reset all` to reset everything |
 | `F2` | Export the scene as-is, in the loaded file's format (`.ply` or `.sog`) |
 | `F3` | Export the scene as an optimized `.sog`, even if a `.ply` was loaded |

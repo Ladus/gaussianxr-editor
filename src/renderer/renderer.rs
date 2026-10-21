@@ -40,7 +40,9 @@ ADJUST (color grading)
   Click the Adjust button (top right) to open the side panel. Drag the
   sliders for temperature, tint, exposure, contrast, highlights, shadows,
   saturation, vibrance and hue. Click a slider name to reset it. The
-  adjustments are baked into F2 / F3 exports.
+  adjustments are baked into F2 / F3 exports. The panel also has Rotate
+  X / Y / Z sliders (same as holding the X / Y / Z keys) and Measure
+  buttons: Place 1 / Place 2 at the crosshair, Enter measurement, Clear.
 
 EXPORT
   Each export creates a folder named after the loaded file. It holds
