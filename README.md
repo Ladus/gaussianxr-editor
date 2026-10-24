@@ -122,7 +122,11 @@ rotation applied (`F2`), or as a `.sog` regardless of the loaded format (`F3`).
 SOG export supports 3D scenes only, so `F3` fails for Space-Time Gaussian Lite
 PLY files. The camera's current position becomes the origin (0, 0, 0), and the
 scene is turned about the up axis so the direction you are facing becomes
-forward (+Z). Position and aim the camera before exporting.
+forward (+Z). Position and aim the camera before exporting. Starting an export
+(`F2`, `F3`, a sidebar export button or the web button) first asks for a file
+name: the loaded file's name is filled in and selected, so typing replaces it,
+`Enter` keeps it and `Esc` cancels. The name is used for the folder and the
+files inside it.
 
 - Native: creates a `<name>/` folder next to the loaded file containing
   `<name>.ply` or `<name>.sog`, `<name>.gallery.png`, a 512x512 center-cropped

@@ -50,7 +50,9 @@ ADJUST (color grading)
   and Delete removes the selected splats.
 
 EXPORT
-  Each export creates a folder named after the loaded file. It holds
+  Starting an export asks for a name, with the loaded file's name
+  already selected: type to replace it or press Enter to keep it
+  (Esc cancels). Each export creates a folder with that name. It holds
   the scene, a thumbnail (.gallery.png) for the GaussianXR gallery
   taken from the camera's current viewpoint, and an
   .xrSceneTransform.json file.

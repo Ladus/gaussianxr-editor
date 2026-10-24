@@ -43,6 +43,12 @@ pub enum UserEvent {
     },
 }
 
+struct NameInput {
+    text: String,
+    selected: bool,
+    force_sog: bool,
+}
+
 pub struct LoadedSource {
     format: FileFormat,
     path: std::path::PathBuf,
@@ -75,7 +81,9 @@ pub struct AppState {
     force_frame: bool,
 
     // An export waits for the next frame so the "Exporting..." overlay shows first.
-    pending_export: Option<bool>,
+    pending_export: Option<(bool, String)>,
+    // File name prompt shown before exporting; `selected` means the next key replaces the text.
+    name_input: Option<NameInput>,
     exporting: bool,
 
     // Rectangle select tool: the drag in window pixels, and one flag per splat.
@@ -144,6 +152,7 @@ impl AppState {
             is_occluded: false,
             force_frame: false,
             pending_export: None,
+            name_input: None,
             exporting: false,
             select_tool: false,
             select_drag: None,
@@ -216,6 +225,72 @@ impl AppState {
             ui.rect(x1 - 2.0, y0, 2.0, y1 - y0, edge);
         }
 
+        if let Some(input) = &self.name_input {
+            let (width, height) = self.screen_size();
+            ui.rect(0.0, 0.0, width, height, [0.0, 0.0, 0.0, 0.55]);
+
+            let format = match (&self.source, input.force_sog) {
+                (Some(source), false) => source.format,
+                _ => FileFormat::Sog,
+            };
+            let name = &input.text;
+            let title = "Export name";
+            let target = format!("Saves to {name}/{name}.{}", format.extension());
+            let hint = "Enter = export   Esc = cancel";
+
+            let s = (height / 200.0).floor().clamp(2.0, 5.0);
+            let pad = 6.0 * s;
+            let text_width = UiBatch::text_width(name, s);
+            let min_field = UiBatch::text_width("xxxxxxxxxxxxxxxxxxxxxxxx", s);
+            let inner = [
+                UiBatch::text_width(title, s),
+                UiBatch::text_width(&target, s),
+                UiBatch::text_width(hint, s),
+                text_width + 8.0 * s,
+                min_field,
+            ]
+            .into_iter()
+            .fold(0.0, f32::max);
+
+            let panel_w = inner + 2.0 * pad;
+            let panel_h = 44.0 * s + 2.0 * pad;
+            let x = ((width - panel_w) / 2.0).floor();
+            let y = ((height - panel_h) / 2.0).floor();
+            let left = x + pad;
+            let field_y = y + pad + 11.0 * s;
+
+            ui.rect(x, y, panel_w, panel_h, [0.07, 0.07, 0.08, 0.97]);
+            ui.text(left, y + pad, s, title, [0.92, 0.92, 0.92, 1.0]);
+            ui.rect(left, field_y, inner, 11.0 * s, [0.16, 0.16, 0.18, 1.0]);
+            if input.selected {
+                ui.rect(
+                    left + 1.0 * s,
+                    field_y + 1.0 * s,
+                    text_width + 2.0 * s,
+                    9.0 * s,
+                    [0.2, 0.45, 0.85, 1.0],
+                );
+            }
+            ui.text(
+                left + 2.0 * s,
+                field_y + 2.0 * s,
+                s,
+                name,
+                [1.0, 1.0, 1.0, 1.0],
+            );
+            if !input.selected {
+                ui.text(
+                    left + 2.0 * s + text_width,
+                    field_y + 2.0 * s,
+                    s,
+                    "_",
+                    [1.0, 0.62, 0.15, 1.0],
+                );
+            }
+            ui.text(left, field_y + 15.0 * s, s, &target, [0.6, 0.6, 0.64, 1.0]);
+            ui.text(left, field_y + 26.0 * s, s, hint, [0.6, 0.6, 0.64, 1.0]);
+        }
+
         if self.exporting {
             let (width, height) = self.screen_size();
             ui.rect(0.0, 0.0, width, height, [0.0, 0.0, 0.0, 0.55]);
@@ -248,9 +323,17 @@ impl AppState {
         code: KeyCode,
         is_pressed: bool,
         repeat: bool,
+        text: Option<&str>,
     ) {
         if matches!(code, KeyCode::ShiftLeft | KeyCode::ShiftRight) {
             self.shift_held = is_pressed;
+        }
+
+        if self.name_input.is_some() {
+            if is_pressed {
+                self.handle_name_key(code, text);
+            }
+            return;
         }
 
         if self.length_input.is_some() {
@@ -522,7 +605,7 @@ impl AppState {
     }
 
     fn sidebar_blocked(&self) -> bool {
-        self.renderer.help_visible() || self.length_input.is_some()
+        self.renderer.help_visible() || self.length_input.is_some() || self.name_input.is_some()
     }
 
     fn apply_sidebar_outcome(&mut self, outcome: SidebarOutcome) {
@@ -824,11 +907,77 @@ impl AppState {
             log::warn!("nothing to export");
             return;
         }
-        if self.pending_export.is_some() {
+        if self.pending_export.is_some() || self.name_input.is_some() {
             return;
         }
 
-        self.pending_export = Some(force_sog);
+        self.camera_controller.release_all();
+        self.set_rotate_key(None);
+        self.name_input = Some(NameInput {
+            text: self.default_export_name(),
+            selected: true,
+            force_sog,
+        });
+        self.force_frame = true;
+        self.redraw_scheduler.request_redraw();
+    }
+
+    // The loaded file's name without its extension.
+    fn default_export_name(&self) -> String {
+        self.source
+            .as_ref()
+            .and_then(|source| source.path.file_stem())
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("scene")
+            .to_string()
+    }
+
+    fn handle_name_key(&mut self, code: KeyCode, text: Option<&str>) {
+        // Characters that cannot be used in file names are ignored.
+        let allowed = |c: &char| !c.is_control() && !"<>:\"/\\|?*".contains(*c);
+
+        let Some(input) = &mut self.name_input else {
+            return;
+        };
+
+        match code {
+            KeyCode::Escape => self.name_input = None,
+            KeyCode::Enter | KeyCode::NumpadEnter => self.confirm_export_name(),
+            KeyCode::Backspace => {
+                if input.selected {
+                    input.text.clear();
+                    input.selected = false;
+                } else {
+                    input.text.pop();
+                }
+            }
+            _ => {
+                for c in text.unwrap_or("").chars().filter(allowed) {
+                    if input.selected {
+                        input.text.clear();
+                        input.selected = false;
+                    }
+                    if input.text.chars().count() < 100 {
+                        input.text.push(c);
+                    }
+                }
+            }
+        }
+
+        self.redraw_scheduler.request_redraw();
+    }
+
+    fn confirm_export_name(&mut self) {
+        let Some(input) = self.name_input.take() else {
+            return;
+        };
+
+        let mut name = input.text.trim().trim_end_matches('.').trim().to_string();
+        if name.is_empty() {
+            name = self.default_export_name();
+        }
+
+        self.pending_export = Some((input.force_sog, name));
         self.exporting = true;
         self.force_frame = true;
         self.redraw_scheduler.request_redraw();
@@ -836,18 +985,19 @@ impl AppState {
 
     // Runs after a frame with the overlay has been presented, because export blocks.
     fn run_pending_export(&mut self) {
-        let Some(force_sog) = self.pending_export.take() else {
+        let Some((force_sog, name)) = self.pending_export.take() else {
             return;
         };
 
-        self.export(force_sog);
+        self.export(force_sog, &name);
         self.exporting = false;
         self.redraw_scheduler.request_redraw();
     }
 
     // Writes the loaded scene with the current rotation baked in and the camera as origin.
-    // `force_sog` exports as .sog even when the loaded file was a .ply.
-    fn export(&mut self, force_sog: bool) {
+    // `force_sog` exports as .sog even when the loaded file was a .ply; `name` is the
+    // folder and file name without extension.
+    fn export(&mut self, force_sog: bool, name: &str) {
         self.renderer.update(&self.gpu, &self.scene, &self.camera);
 
         let Some(source) = &self.source else {
@@ -879,11 +1029,7 @@ impl AppState {
             }
         };
 
-        let stem = source
-            .path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("scene");
+        let stem = name;
         let out_name = format!("{stem}.{}", format.extension());
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -1087,10 +1233,17 @@ impl ApplicationHandler<UserEvent> for App {
                         physical_key: PhysicalKey::Code(code),
                         state: key_state,
                         repeat,
+                        text,
                         ..
                     },
                 ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed(), repeat),
+            } => state.handle_key(
+                event_loop,
+                code,
+                key_state.is_pressed(),
+                repeat,
+                text.as_deref(),
+            ),
             WindowEvent::MouseInput {
                 state: button_state,
                 button: MouseButton::Left,
