@@ -86,6 +86,11 @@ cargo run --release
 Drag and drop a `.ply` (3DGS or Space-Time Gaussian Lite) or `.sog` (v2) file
 onto the window to load it.
 
+You can also open a file directly with the app. The first command-line argument
+is loaded on start, for example `gaussianxr-editor.exe scene.sog`. On Windows,
+right-click a `.ply` or `.sog` file, choose **Open with** > **Choose another
+app**, pick `gaussianxr-editor.exe` and tick **Always** to make it the default.
+
 ### Controls
 
 | Input | Action |

@@ -33,6 +33,10 @@ pub fn run() -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let mut app = app::App::new();
+        // "Open with" passes the file path as the first argument.
+        if let Some(path) = std::env::args_os().nth(1) {
+            app.open_on_start(path.into());
+        }
         event_loop.run_app(&mut app)?;
     }
     #[cfg(target_arch = "wasm32")]

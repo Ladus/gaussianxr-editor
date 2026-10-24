@@ -1039,6 +1039,30 @@ impl AppState {
         Ok(())
     }
 
+    // Loads a .ply or .sog file from disk, as for a drop or "Open with".
+    #[cfg(not(target_arch = "wasm32"))]
+    fn load_file_path(&mut self, path: &std::path::Path) {
+        let Some(format) = FileFormat::from_path(path) else {
+            log::error!("unsupported file format: {path:?}");
+            return;
+        };
+
+        let result = assets::loader::load_gaussians_from_path(format, path).and_then(|gaussians| {
+            let gaussian_count = gaussians.len();
+            self.replace_gaussians(format, path.to_path_buf(), gaussians)?;
+            Ok(gaussian_count)
+        });
+
+        match result {
+            Ok(gaussian_count) => {
+                log::info!("loaded file: {path:?}");
+                log::info!("gaussian count: {gaussian_count}");
+                self.redraw_scheduler.request_redraw();
+            }
+            Err(e) => log::error!("{e:?}: {path:?}"),
+        }
+    }
+
     pub fn request_export(&mut self, force_sog: bool) {
         if self.source.is_none() {
             log::warn!("nothing to export");
@@ -1213,6 +1237,9 @@ impl AppState {
 pub struct App {
     #[cfg(target_arch = "wasm32")]
     proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
+    // File to load once the window is ready, from the command line.
+    #[cfg(not(target_arch = "wasm32"))]
+    initial_file: Option<std::path::PathBuf>,
     state: Option<AppState>,
     scale_factor: f64,
     window_size: winit::dpi::PhysicalSize<u32>,
@@ -1226,9 +1253,16 @@ impl App {
             state: None,
             #[cfg(target_arch = "wasm32")]
             proxy,
+            #[cfg(not(target_arch = "wasm32"))]
+            initial_file: None,
             scale_factor: 1.0,
             window_size: winit::dpi::PhysicalSize::new(1, 1),
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn open_on_start(&mut self, path: std::path::PathBuf) {
+        self.initial_file = Some(path);
     }
 }
 
@@ -1262,6 +1296,9 @@ impl ApplicationHandler<UserEvent> for App {
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.state = Some(pollster::block_on(AppState::new(window)).unwrap());
+            if let (Some(path), Some(state)) = (self.initial_file.take(), &mut self.state) {
+                state.load_file_path(&path);
+            }
         }
 
         #[cfg(target_arch = "wasm32")]
@@ -1309,29 +1346,7 @@ impl ApplicationHandler<UserEvent> for App {
                 self.scale_factor = scale_factor;
             }
             #[cfg(not(target_arch = "wasm32"))]
-            WindowEvent::DroppedFile(path) => {
-                let format = assets::format::FileFormat::from_path(&path);
-                let Some(format) = format else {
-                    log::error!("unsupported file format: {path:?}");
-                    return;
-                };
-                match assets::loader::load_gaussians_from_path(format, &path).and_then(
-                    |gaussians| {
-                        let gaussian_count = gaussians.len();
-                        state.replace_gaussians(format, path.clone(), gaussians)?;
-                        Ok(gaussian_count)
-                    },
-                ) {
-                    Ok(gaussian_count) => {
-                        log::info!("loaded dropped file: {path:?}");
-                        log::info!("gaussian count: {gaussian_count}");
-                        state.redraw_scheduler.request_redraw();
-                    }
-                    Err(e) => {
-                        log::error!("{e:?}: {path:?}");
-                    }
-                }
-            }
+            WindowEvent::DroppedFile(path) => state.load_file_path(&path),
             WindowEvent::RedrawRequested => {
                 if state.is_occluded || (!state.is_focused && !state.force_frame) {
                     return;
