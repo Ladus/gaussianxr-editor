@@ -17,7 +17,7 @@ const EXPORT_TOP: f32 = 366.0;
 // Panel content height in font pixels; the UI scale is chosen so this fits the window.
 const SELECT_HEADER_TOP: f32 = 396.0;
 const SELECT_TOP: f32 = 406.0;
-const CONTENT_HEIGHT: f32 = 420.0;
+const CONTENT_HEIGHT: f32 = 436.0;
 
 const COLOR_COUNT: usize = SLIDERS.len();
 const ROTATION_COUNT: usize = 3;
@@ -68,6 +68,8 @@ pub enum Target {
     Export(bool),
     // 0 = toggle the select tool, 1 = invert, 2 = delete.
     Select(usize),
+    // 0 = undo, 1 = redo.
+    History(usize),
     Panel,
 }
 
@@ -82,6 +84,8 @@ pub enum Action {
     ToggleSelectTool,
     InvertSelection,
     DeleteSelection,
+    Undo,
+    Redo,
 }
 
 // App state the panel needs for drawing.
@@ -89,6 +93,8 @@ pub struct PanelState {
     pub points_set: [bool; 2],
     pub select_active: bool,
     pub selected: usize,
+    pub can_undo: bool,
+    pub can_redo: bool,
 }
 
 #[derive(Default)]
@@ -119,6 +125,7 @@ struct Layout {
     export: [Rect; 2],
     select_header: (f32, f32),
     select: [Rect; 3],
+    history: [Rect; 2],
 }
 
 fn slider_top(index: usize) -> f32 {
@@ -209,6 +216,17 @@ fn layout(screen: (f32, f32)) -> Layout {
                 )
             })
         },
+        history: {
+            let half_w = (inner_w - 2.0 * u) / 2.0;
+            [0, 1].map(|i| {
+                Rect::new(
+                    inner_x + i as f32 * (half_w + 2.0 * u),
+                    (SELECT_TOP + BUTTON_STEP) * u,
+                    half_w,
+                    BUTTON_HEIGHT * u,
+                )
+            })
+        },
     }
 }
 
@@ -291,6 +309,11 @@ impl Sidebar {
                 return Some(Target::Select(i));
             }
         }
+        for (i, rect) in layout.history.iter().enumerate() {
+            if rect.contains(pos) {
+                return Some(Target::History(i));
+            }
+        }
         layout.panel.contains(pos).then_some(Target::Panel)
     }
 
@@ -358,6 +381,9 @@ impl Sidebar {
                     1 => Action::InvertSelection,
                     _ => Action::DeleteSelection,
                 });
+            }
+            Some(Target::History(i)) => {
+                outcome.action = Some(if i == 0 { Action::Undo } else { Action::Redo });
             }
         }
         outcome
@@ -534,5 +560,25 @@ impl Sidebar {
         );
         button(batch, l.select[1], Target::Select(1), "Invert", false);
         button(batch, l.select[2], Target::Select(2), "Delete", false);
+
+        for (i, (label, enabled)) in [("Undo", state.can_undo), ("Redo", state.can_redo)]
+            .into_iter()
+            .enumerate()
+        {
+            if enabled {
+                button(batch, l.history[i], Target::History(i), label, false);
+            } else {
+                let rect = l.history[i];
+                batch.rect(rect.x, rect.y, rect.w, rect.h, BUTTON);
+                let width = UiBatch::text_width(label, u);
+                batch.text(
+                    (rect.x + (rect.w - width) / 2.0).floor(),
+                    (rect.y + (rect.h - 7.0 * u) / 2.0).floor(),
+                    u,
+                    label,
+                    DIM,
+                );
+            }
+        }
     }
 }

@@ -47,7 +47,8 @@ ADJUST (color grading)
   Export original / Export as .sog buttons do the same as F2 / F3.
   Select toggles a rectangle select tool: drag over the scene to mark
   splats in red (Shift adds, a click clears). Invert flips the selection
-  and Delete removes the selected splats.
+  and Delete removes the selected splats. Undo / Redo (or Ctrl+Z /
+  Ctrl+Y) step through select and delete actions.
 
 EXPORT
   Starting an export asks for a name, with the loaded file's name

@@ -109,6 +109,7 @@ onto the window to load it.
 | `Export original` / `Export as .sog` (sidebar) | Same as `F2` / `F3`: export in the loaded file's format, or always as an optimized `.sog` |
 | `Select` (sidebar) | Toggle the select tool; while it is on, drag a rectangle over the scene to select the splats inside it (shown as bright red dots). A plain click clears the selection and `Shift` adds to it |
 | `Invert` / `Delete` (sidebar) | Invert the selection, or delete the selected splats from the scene (they are also gone from exports) |
+| `Undo` / `Redo` (sidebar), `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) | Undo or redo selecting, inverting and deleting (the last 20 actions). Scaling with the measure tool clears this history |
 | Drag a slider in the sidebar | Change that adjustment (temperature, tint, exposure, contrast, highlights, shadows, saturation, vibrance, hue); click a slider's name to reset it, or `Reset all` to reset everything |
 | `F2` | Export the scene as-is, in the loaded file's format (`.ply` or `.sog`) |
 | `F3` | Export the scene as an optimized `.sog`, even if a `.ply` was loaded |

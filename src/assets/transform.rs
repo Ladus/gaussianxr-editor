@@ -182,20 +182,55 @@ pub fn for_each_position(gaussians: &Gaussians, mut f: impl FnMut(usize, [f32; 3
     }
 }
 
-// Keeps only the splats whose flag in `keep` is true.
-pub fn retain_gaussians(gaussians: &mut Gaussians, keep: &[bool]) {
-    fn filter<T>(items: &mut Vec<T>, keep: &[bool]) {
-        let mut index = 0;
-        items.retain(|_| {
-            let keep_item = keep.get(index).copied().unwrap_or(true);
-            index += 1;
-            keep_item
-        });
+// Removes the splats whose flag in `keep` is false and returns them.
+pub fn split_off_gaussians(gaussians: &mut Gaussians, keep: &[bool]) -> Gaussians {
+    fn split<T>(items: &mut Vec<T>, keep: &[bool]) -> Vec<T> {
+        let mut kept = Vec::with_capacity(items.len());
+        let mut removed = Vec::new();
+        for (i, item) in items.drain(..).enumerate() {
+            if keep.get(i).copied().unwrap_or(true) {
+                kept.push(item);
+            } else {
+                removed.push(item);
+            }
+        }
+        *items = kept;
+        removed
     }
 
     match gaussians {
-        Gaussians::Gaussian3d(items) => filter(items, keep),
-        Gaussians::Gaussian4d(items) => filter(items, keep),
+        Gaussians::Gaussian3d(items) => Gaussians::Gaussian3d(split(items, keep)),
+        Gaussians::Gaussian4d(items) => Gaussians::Gaussian4d(split(items, keep)),
+    }
+}
+
+// Puts splats removed by `split_off_gaussians` back at their original positions.
+pub fn merge_gaussians(gaussians: &mut Gaussians, removed: Gaussians, keep: &[bool]) {
+    fn merge<T>(items: &mut Vec<T>, removed: Vec<T>, keep: &[bool]) {
+        let mut kept = std::mem::take(items).into_iter();
+        let mut removed = removed.into_iter();
+        let mut merged = Vec::with_capacity(keep.len());
+        for &keep_item in keep {
+            let next = if keep_item {
+                kept.next()
+            } else {
+                removed.next()
+            };
+            merged.extend(next);
+        }
+        merged.extend(kept);
+        merged.extend(removed);
+        *items = merged;
+    }
+
+    match (gaussians, removed) {
+        (Gaussians::Gaussian3d(items), Gaussians::Gaussian3d(removed)) => {
+            merge(items, removed, keep)
+        }
+        (Gaussians::Gaussian4d(items), Gaussians::Gaussian4d(removed)) => {
+            merge(items, removed, keep)
+        }
+        _ => {}
     }
 }
 

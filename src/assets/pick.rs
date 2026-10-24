@@ -79,6 +79,24 @@ mod tests {
     }
 
     #[test]
+    fn split_off_then_merge_restores_the_original_order() {
+        let original: Vec<Gaussian3d> = (0..6).map(|i| splat([i as f32, 0.0, 0.0])).collect();
+        let mut gaussians = Gaussians::Gaussian3d(original.clone());
+        let keep = [true, false, true, false, false, true];
+
+        let removed = crate::assets::transform::split_off_gaussians(&mut gaussians, &keep);
+        assert_eq!(gaussians.len(), 3);
+        assert_eq!(removed.len(), 3);
+
+        crate::assets::transform::merge_gaussians(&mut gaussians, removed, &keep);
+        let Gaussians::Gaussian3d(items) = &gaussians else {
+            unreachable!()
+        };
+        let xs: Vec<f32> = items.iter().map(|g| g.position[0]).collect();
+        assert_eq!(xs, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+
+    #[test]
     fn scaling_changes_distances_and_splat_sizes() {
         let mut gaussians =
             Gaussians::Gaussian3d(vec![splat([0.0, 0.0, 1.0]), splat([0.0, 0.0, 3.0])]);

@@ -49,6 +49,23 @@ struct NameInput {
     force_sog: bool,
 }
 
+const MAX_HISTORY: usize = 20;
+
+// An undoable select or delete action.
+enum Edit {
+    Selection {
+        before: Vec<bool>,
+        after: Vec<bool>,
+    },
+    Delete {
+        // One flag per splat before the delete; false marks a deleted splat.
+        keep: Vec<bool>,
+        // The deleted splats while the delete is undone.
+        removed: Option<Gaussians>,
+        selection_before: Vec<bool>,
+    },
+}
+
 pub struct LoadedSource {
     format: FileFormat,
     path: std::path::PathBuf,
@@ -92,6 +109,10 @@ pub struct AppState {
     selection: Vec<bool>,
     selected_count: usize,
     shift_held: bool,
+    ctrl_held: bool,
+    history: Vec<Edit>,
+    // Edits before this index are applied; the rest can be redone.
+    history_pos: usize,
 
     is_looking: bool,
 
@@ -159,6 +180,9 @@ impl AppState {
             selection: Vec::new(),
             selected_count: 0,
             shift_held: false,
+            ctrl_held: false,
+            history: Vec::new(),
+            history_pos: 0,
             is_looking: false,
             rotate_key: None,
             cursor_captured: false,
@@ -210,6 +234,8 @@ impl AppState {
                 points_set,
                 select_active: self.select_tool,
                 selected: self.selected_count,
+                can_undo: self.history_pos > 0,
+                can_redo: self.history_pos < self.history.len(),
             };
             self.sidebar.draw(&mut ui, self.screen_size(), &state);
         }
@@ -328,6 +354,9 @@ impl AppState {
         if matches!(code, KeyCode::ShiftLeft | KeyCode::ShiftRight) {
             self.shift_held = is_pressed;
         }
+        if matches!(code, KeyCode::ControlLeft | KeyCode::ControlRight) {
+            self.ctrl_held = is_pressed;
+        }
 
         if self.name_input.is_some() {
             if is_pressed {
@@ -345,6 +374,20 @@ impl AppState {
 
         match (code, is_pressed) {
             (KeyCode::Escape, true) => event_loop.exit(),
+            (KeyCode::KeyZ, true) if self.ctrl_held => {
+                if !repeat {
+                    if self.shift_held {
+                        self.redo();
+                    } else {
+                        self.undo();
+                    }
+                }
+            }
+            (KeyCode::KeyY, true) if self.ctrl_held => {
+                if !repeat {
+                    self.redo();
+                }
+            }
             (KeyCode::Digit1 | KeyCode::Numpad1, true) => {
                 if !repeat {
                     self.place_measure_point(0);
@@ -540,6 +583,9 @@ impl AppState {
         self.renderer.set_measure_points(self.measure_points);
 
         log::info!("scaled scene by {factor}");
+        // Deleted splats would come back unscaled, so earlier edits can no longer be undone.
+        self.history.clear();
+        self.history_pos = 0;
         self.refresh_selection();
         self.force_frame = true;
         self.redraw_scheduler.request_redraw();
@@ -630,6 +676,8 @@ impl AppState {
             }
             Some(SidebarAction::InvertSelection) => self.invert_selection(),
             Some(SidebarAction::DeleteSelection) => self.delete_selection(),
+            Some(SidebarAction::Undo) => self.undo(),
+            Some(SidebarAction::Redo) => self.redo(),
             None => {}
         }
 
@@ -699,8 +747,95 @@ impl AppState {
             });
         }
 
-        self.selection = selection;
+        self.set_selection_recorded(selection);
+    }
+
+    // Replaces the selection and records it so it can be undone.
+    fn set_selection_recorded(&mut self, after: Vec<bool>) {
+        let before = std::mem::replace(&mut self.selection, after.clone());
+        let is_empty = |flags: &[bool]| !flags.contains(&true);
+        if before != after && !(is_empty(&before) && is_empty(&after)) {
+            self.push_edit(Edit::Selection { before, after });
+        }
         self.refresh_selection();
+    }
+
+    fn push_edit(&mut self, edit: Edit) {
+        self.history.truncate(self.history_pos);
+        self.history.push(edit);
+        if self.history.len() > MAX_HISTORY {
+            self.history.remove(0);
+        }
+        self.history_pos = self.history.len();
+    }
+
+    fn undo(&mut self) {
+        if self.length_input.is_some() || self.history_pos == 0 {
+            return;
+        }
+        self.history_pos -= 1;
+        self.apply_edit(self.history_pos, true);
+    }
+
+    fn redo(&mut self) {
+        if self.length_input.is_some() || self.history_pos >= self.history.len() {
+            return;
+        }
+        self.apply_edit(self.history_pos, false);
+        self.history_pos += 1;
+    }
+
+    fn apply_edit(&mut self, index: usize, undo: bool) {
+        let mut edit = self.history.remove(index);
+        let mut reupload = false;
+
+        match &mut edit {
+            Edit::Selection { before, after } => {
+                self.selection = if undo { before.clone() } else { after.clone() };
+            }
+            Edit::Delete {
+                keep,
+                removed,
+                selection_before,
+            } => {
+                if let Some(source) = &mut self.source {
+                    if undo {
+                        if let Some(restored) = removed.take() {
+                            assets::transform::merge_gaussians(
+                                &mut source.gaussians,
+                                restored,
+                                keep,
+                            );
+                        }
+                        self.selection = selection_before.clone();
+                    } else {
+                        *removed = Some(assets::transform::split_off_gaussians(
+                            &mut source.gaussians,
+                            keep,
+                        ));
+                        self.selection.clear();
+                    }
+                    reupload = true;
+                }
+            }
+        }
+
+        self.history.insert(index, edit);
+        if reupload {
+            self.upload_source();
+        }
+        self.refresh_selection();
+    }
+
+    // Sends the loaded splats to the GPU after they were added or removed.
+    fn upload_source(&mut self) {
+        let Some(source) = &self.source else {
+            return;
+        };
+        self.renderer
+            .replace_gaussians(&mut self.gpu, &source.gaussians, self.scene.scene_type);
+        self.scene.gaussian_count = source.gaussians.len() as u32;
+        self.force_frame = true;
     }
 
     fn invert_selection(&mut self) {
@@ -711,10 +846,8 @@ impl AppState {
             self.selection = vec![false; source.gaussians.len()];
         }
 
-        for flag in &mut self.selection {
-            *flag = !*flag;
-        }
-        self.refresh_selection();
+        let after: Vec<bool> = self.selection.iter().map(|flag| !flag).collect();
+        self.set_selection_recorded(after);
     }
 
     fn delete_selection(&mut self) {
@@ -726,15 +859,17 @@ impl AppState {
         };
 
         let keep: Vec<bool> = self.selection.iter().map(|selected| !selected).collect();
-        assets::transform::retain_gaussians(&mut source.gaussians, &keep);
-        self.renderer
-            .replace_gaussians(&mut self.gpu, &source.gaussians, self.scene.scene_type);
-        self.scene.gaussian_count = source.gaussians.len() as u32;
-
+        let removed = assets::transform::split_off_gaussians(&mut source.gaussians, &keep);
         log::info!("deleted {} splats", self.selected_count);
-        self.selection.clear();
+
+        let selection_before = std::mem::take(&mut self.selection);
+        self.push_edit(Edit::Delete {
+            keep,
+            removed: Some(removed),
+            selection_before,
+        });
+        self.upload_source();
         self.refresh_selection();
-        self.force_frame = true;
     }
 
     fn handle_cursor_moved(&mut self, x: f64, y: f64) {
@@ -871,6 +1006,8 @@ impl AppState {
 
         self.select_drag = None;
         self.selection.clear();
+        self.history.clear();
+        self.history_pos = 0;
         self.refresh_selection();
 
         Ok(())
