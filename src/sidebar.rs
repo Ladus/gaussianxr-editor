@@ -1,7 +1,7 @@
 use crate::adjust::{ColorAdjustments, SLIDERS};
 use crate::renderer::ui::UiBatch;
 
-const PANEL_WIDTH: f32 = 120.0;
+const PANEL_WIDTH: f32 = 130.0;
 const PADDING: f32 = 6.0;
 const SLIDER_TOP: f32 = 22.0;
 const SLIDER_STEP: f32 = 20.0;
@@ -15,7 +15,9 @@ const BUTTON_STEP: f32 = 14.0;
 const EXPORT_HEADER_TOP: f32 = 356.0;
 const EXPORT_TOP: f32 = 366.0;
 // Panel content height in font pixels; the UI scale is chosen so this fits the window.
-const CONTENT_HEIGHT: f32 = 394.0;
+const SELECT_HEADER_TOP: f32 = 396.0;
+const SELECT_TOP: f32 = 406.0;
+const CONTENT_HEIGHT: f32 = 420.0;
 
 const COLOR_COUNT: usize = SLIDERS.len();
 const ROTATION_COUNT: usize = 3;
@@ -64,6 +66,8 @@ pub enum Target {
     Enter,
     Clear,
     Export(bool),
+    // 0 = toggle the select tool, 1 = invert, 2 = delete.
+    Select(usize),
     Panel,
 }
 
@@ -75,6 +79,16 @@ pub enum Action {
     ClearMeasurement,
     // The flag forces .sog output, like F3.
     Export(bool),
+    ToggleSelectTool,
+    InvertSelection,
+    DeleteSelection,
+}
+
+// App state the panel needs for drawing.
+pub struct PanelState {
+    pub points_set: [bool; 2],
+    pub select_active: bool,
+    pub selected: usize,
 }
 
 #[derive(Default)]
@@ -103,6 +117,8 @@ struct Layout {
     clear: Rect,
     export_header: (f32, f32),
     export: [Rect; 2],
+    select_header: (f32, f32),
+    select: [Rect; 3],
 }
 
 fn slider_top(index: usize) -> f32 {
@@ -181,6 +197,18 @@ fn layout(screen: (f32, f32)) -> Layout {
                 BUTTON_HEIGHT * u,
             )
         }),
+        select_header: (inner_x, SELECT_HEADER_TOP * u),
+        select: {
+            let third_w = (inner_w - 4.0 * u) / 3.0;
+            [0, 1, 2].map(|i| {
+                Rect::new(
+                    inner_x + i as f32 * (third_w + 2.0 * u),
+                    SELECT_TOP * u,
+                    third_w,
+                    BUTTON_HEIGHT * u,
+                )
+            })
+        },
     }
 }
 
@@ -258,6 +286,11 @@ impl Sidebar {
                 return Some(Target::Export(i == 1));
             }
         }
+        for (i, rect) in layout.select.iter().enumerate() {
+            if rect.contains(pos) {
+                return Some(Target::Select(i));
+            }
+        }
         layout.panel.contains(pos).then_some(Target::Panel)
     }
 
@@ -319,6 +352,13 @@ impl Sidebar {
             Some(Target::Enter) => outcome.action = Some(Action::EnterMeasurement),
             Some(Target::Clear) => outcome.action = Some(Action::ClearMeasurement),
             Some(Target::Export(force_sog)) => outcome.action = Some(Action::Export(force_sog)),
+            Some(Target::Select(i)) => {
+                outcome.action = Some(match i {
+                    0 => Action::ToggleSelectTool,
+                    1 => Action::InvertSelection,
+                    _ => Action::DeleteSelection,
+                });
+            }
         }
         outcome
     }
@@ -345,7 +385,8 @@ impl Sidebar {
         outcome
     }
 
-    pub fn draw(&self, batch: &mut UiBatch, screen: (f32, f32), points_set: [bool; 2]) {
+    pub fn draw(&self, batch: &mut UiBatch, screen: (f32, f32), state: &PanelState) {
+        let points_set = state.points_set;
         let l = layout(screen);
         let u = l.u;
 
@@ -476,5 +517,22 @@ impl Sidebar {
             "Export as .sog",
             false,
         );
+
+        batch.text(
+            l.select_header.0,
+            l.select_header.1,
+            u,
+            &format!("Select ({} selected)", state.selected),
+            DIM,
+        );
+        button(
+            batch,
+            l.select[0],
+            Target::Select(0),
+            "Select",
+            state.select_active,
+        );
+        button(batch, l.select[1], Target::Select(1), "Invert", false);
+        button(batch, l.select[2], Target::Select(2), "Delete", false);
     }
 }

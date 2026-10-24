@@ -6,6 +6,7 @@ use crate::scene::{Scene, SceneType};
 
 use super::grid::GridPass;
 use super::measure::MeasurePass;
+use super::selection::SelectionPass;
 use super::text_overlay::{TextOverlay, TextStyle};
 use super::ui::{UiBatch, UiRenderer};
 use glam::Vec3;
@@ -44,6 +45,9 @@ ADJUST (color grading)
   X / Y / Z sliders (same as holding the X / Y / Z keys) and Measure
   buttons: Place 1 / Place 2 at the crosshair, Enter measurement, Clear.
   Export original / Export as .sog buttons do the same as F2 / F3.
+  Select toggles a rectangle select tool: drag over the scene to mark
+  splats in red (Shift adds, a click clears). Invert flips the selection
+  and Delete removes the selected splats.
 
 EXPORT
   Each export creates a folder named after the loaded file. It holds
@@ -77,6 +81,7 @@ pub struct Renderer {
 
     measure: MeasurePass,
     measure_points: [Option<Vec3>; 2],
+    selection: SelectionPass,
     grid: GridPass,
     show_grid: bool,
     ui: UiRenderer,
@@ -122,6 +127,7 @@ impl Renderer {
             show_help: false,
             measure: MeasurePass::new(gpu),
             measure_points: [None, None],
+            selection: SelectionPass::new(gpu),
             grid: GridPass::new(gpu),
             show_grid: false,
             ui: UiRenderer::new(gpu),
@@ -157,6 +163,11 @@ impl Renderer {
         self.measure_points = points;
     }
 
+    // Positions of the selected splats in the scene's own space.
+    pub fn set_selection(&mut self, gpu: &GpuContext, positions: &[[f32; 3]]) {
+        self.selection.set_positions(gpu, positions);
+    }
+
     // `None` hides the prompt.
     pub fn set_input_prompt(&mut self, gpu: &GpuContext, text: Option<&str>) {
         self.show_input_prompt = text.is_some();
@@ -184,6 +195,7 @@ impl Renderer {
             self.measure_points[0],
             self.measure_points[1],
         );
+        self.selection.update(gpu, view_proj);
     }
 
     pub fn render(
@@ -219,6 +231,7 @@ impl Renderer {
 
         self.backend.render(&mut encoder, &output_view, true);
         self.measure.encode(&mut encoder, &output_view);
+        self.selection.encode(&mut encoder, &output_view);
 
         if self.show_grid {
             self.grid.encode(gpu, &mut encoder, &output_view);

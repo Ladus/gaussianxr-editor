@@ -166,6 +166,39 @@ pub fn rotate_gaussians(gaussians: &Gaussians, rot: Quat) -> Gaussians {
     }
 }
 
+// Calls `f(index, position)` for every splat in file order.
+pub fn for_each_position(gaussians: &Gaussians, mut f: impl FnMut(usize, [f32; 3])) {
+    match gaussians {
+        Gaussians::Gaussian3d(items) => {
+            for (i, g) in items.iter().enumerate() {
+                f(i, g.position);
+            }
+        }
+        Gaussians::Gaussian4d(items) => {
+            for (i, g) in items.iter().enumerate() {
+                f(i, g.position);
+            }
+        }
+    }
+}
+
+// Keeps only the splats whose flag in `keep` is true.
+pub fn retain_gaussians(gaussians: &mut Gaussians, keep: &[bool]) {
+    fn filter<T>(items: &mut Vec<T>, keep: &[bool]) {
+        let mut index = 0;
+        items.retain(|_| {
+            let keep_item = keep.get(index).copied().unwrap_or(true);
+            index += 1;
+            keep_item
+        });
+    }
+
+    match gaussians {
+        Gaussians::Gaussian3d(items) => filter(items, keep),
+        Gaussians::Gaussian4d(items) => filter(items, keep),
+    }
+}
+
 pub fn translate_gaussians(gaussians: &mut Gaussians, offset: Vec3) {
     match gaussians {
         Gaussians::Gaussian3d(items) => {

@@ -758,6 +758,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "gaussianxr-editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "fs_extra",
+ "glam",
+ "glob",
+ "image",
+ "js-sys",
+ "log",
+ "pollster",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
+ "wgpu",
+ "winit",
+ "zip",
+]
+
+[[package]]
 name = "gethostname"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3291,34 +3319,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1bfb01076d0aa08b0ba9bd741e178b5cc440f5abe99d9581323a4c8b5d1a1916"
 dependencies = [
  "wgpu-hal",
-]
-
-[[package]]
-name = "wgpu-gs-viewer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "fs_extra",
- "glam",
- "glob",
- "image",
- "js-sys",
- "log",
- "pollster",
- "reqwest",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "web-time",
- "wgpu",
- "winit",
- "zip",
 ]
 
 [[package]]

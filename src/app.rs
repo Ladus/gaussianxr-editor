@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{Vec3, Vec4};
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
@@ -19,7 +19,7 @@ use crate::{
     },
     resources::gaussians::Gaussians,
     scene::{Scene, SceneType},
-    sidebar::{Action as SidebarAction, Outcome as SidebarOutcome, Sidebar},
+    sidebar::{Action as SidebarAction, Outcome as SidebarOutcome, PanelState, Sidebar},
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -77,6 +77,13 @@ pub struct AppState {
     // An export waits for the next frame so the "Exporting..." overlay shows first.
     pending_export: Option<bool>,
     exporting: bool,
+
+    // Rectangle select tool: the drag in window pixels, and one flag per splat.
+    select_tool: bool,
+    select_drag: Option<((f32, f32), (f32, f32))>,
+    selection: Vec<bool>,
+    selected_count: usize,
+    shift_held: bool,
 
     is_looking: bool,
 
@@ -138,6 +145,11 @@ impl AppState {
             force_frame: false,
             pending_export: None,
             exporting: false,
+            select_tool: false,
+            select_drag: None,
+            selection: Vec::new(),
+            selected_count: 0,
+            shift_held: false,
             is_looking: false,
             rotate_key: None,
             cursor_captured: false,
@@ -185,7 +197,23 @@ impl AppState {
         let mut ui = UiBatch::default();
         if !self.renderer.help_visible() {
             let points_set = self.measure_points.map(|p| p.is_some());
-            self.sidebar.draw(&mut ui, self.screen_size(), points_set);
+            let state = PanelState {
+                points_set,
+                select_active: self.select_tool,
+                selected: self.selected_count,
+            };
+            self.sidebar.draw(&mut ui, self.screen_size(), &state);
+        }
+
+        if let Some((a, b)) = self.select_drag {
+            let (x0, x1) = (a.0.min(b.0), a.0.max(b.0));
+            let (y0, y1) = (a.1.min(b.1), a.1.max(b.1));
+            let edge = [1.0, 1.0, 1.0, 0.9];
+            ui.rect(x0, y0, x1 - x0, y1 - y0, [1.0, 0.2, 0.2, 0.15]);
+            ui.rect(x0, y0, x1 - x0, 2.0, edge);
+            ui.rect(x0, y1 - 2.0, x1 - x0, 2.0, edge);
+            ui.rect(x0, y0, 2.0, y1 - y0, edge);
+            ui.rect(x1 - 2.0, y0, 2.0, y1 - y0, edge);
         }
 
         if self.exporting {
@@ -221,6 +249,10 @@ impl AppState {
         is_pressed: bool,
         repeat: bool,
     ) {
+        if matches!(code, KeyCode::ShiftLeft | KeyCode::ShiftRight) {
+            self.shift_held = is_pressed;
+        }
+
         if self.length_input.is_some() {
             if is_pressed {
                 self.handle_length_key(code);
@@ -425,6 +457,7 @@ impl AppState {
         self.renderer.set_measure_points(self.measure_points);
 
         log::info!("scaled scene by {factor}");
+        self.refresh_selection();
         self.force_frame = true;
         self.redraw_scheduler.request_redraw();
     }
@@ -508,6 +541,12 @@ impl AppState {
             Some(SidebarAction::EnterMeasurement) => self.open_length_input(),
             Some(SidebarAction::ClearMeasurement) => self.clear_measure_points(),
             Some(SidebarAction::Export(force_sog)) => self.request_export(force_sog),
+            Some(SidebarAction::ToggleSelectTool) => {
+                self.select_tool = !self.select_tool;
+                self.select_drag = None;
+            }
+            Some(SidebarAction::InvertSelection) => self.invert_selection(),
+            Some(SidebarAction::DeleteSelection) => self.delete_selection(),
             None => {}
         }
 
@@ -522,8 +561,106 @@ impl AppState {
         self.redraw_scheduler.request_redraw();
     }
 
+    // Pushes the selected splat positions to the renderer and updates the count.
+    fn refresh_selection(&mut self) {
+        let mut positions = Vec::new();
+        if let Some(source) = &self.source {
+            if self.selection.len() == source.gaussians.len() {
+                assets::transform::for_each_position(&source.gaussians, |i, p| {
+                    if self.selection[i] {
+                        positions.push(p);
+                    }
+                });
+            } else {
+                self.selection.clear();
+            }
+        }
+
+        self.selected_count = positions.len();
+        self.renderer.set_selection(&self.gpu, &positions);
+        self.redraw_scheduler.request_redraw();
+    }
+
+    // Selects every splat whose center projects inside the dragged rectangle.
+    fn finish_selection(&mut self, a: (f32, f32), b: (f32, f32)) {
+        let Some(source) = &self.source else {
+            return;
+        };
+
+        let count = source.gaussians.len();
+        let (x0, x1) = (a.0.min(b.0), a.0.max(b.0));
+        let (y0, y1) = (a.1.min(b.1), a.1.max(b.1));
+        let is_click = x1 - x0 < 3.0 && y1 - y0 < 3.0;
+
+        let mut selection = if self.shift_held && self.selection.len() == count {
+            self.selection.clone()
+        } else {
+            vec![false; count]
+        };
+
+        if !is_click {
+            let (width, height) = self.screen_size();
+            let view_proj = self.camera.build_projection_matrix()
+                * self.camera.build_view_matrix()
+                * self.scene.model_matrix();
+            assets::transform::for_each_position(&source.gaussians, |i, p| {
+                let clip = view_proj * Vec4::new(p[0], p[1], p[2], 1.0);
+                if clip.w <= 1e-4 {
+                    return;
+                }
+                let x = (clip.x / clip.w * 0.5 + 0.5) * width;
+                let y = (0.5 - clip.y / clip.w * 0.5) * height;
+                if x >= x0 && x <= x1 && y >= y0 && y <= y1 {
+                    selection[i] = true;
+                }
+            });
+        }
+
+        self.selection = selection;
+        self.refresh_selection();
+    }
+
+    fn invert_selection(&mut self) {
+        let Some(source) = &self.source else {
+            return;
+        };
+        if self.selection.len() != source.gaussians.len() {
+            self.selection = vec![false; source.gaussians.len()];
+        }
+
+        for flag in &mut self.selection {
+            *flag = !*flag;
+        }
+        self.refresh_selection();
+    }
+
+    fn delete_selection(&mut self) {
+        if self.selected_count == 0 {
+            return;
+        }
+        let Some(source) = &mut self.source else {
+            return;
+        };
+
+        let keep: Vec<bool> = self.selection.iter().map(|selected| !selected).collect();
+        assets::transform::retain_gaussians(&mut source.gaussians, &keep);
+        self.renderer
+            .replace_gaussians(&mut self.gpu, &source.gaussians, self.scene.scene_type);
+        self.scene.gaussian_count = source.gaussians.len() as u32;
+
+        log::info!("deleted {} splats", self.selected_count);
+        self.selection.clear();
+        self.refresh_selection();
+        self.force_frame = true;
+    }
+
     fn handle_cursor_moved(&mut self, x: f64, y: f64) {
         self.cursor_pos = (x as f32, y as f32);
+        if let Some(drag) = &mut self.select_drag {
+            drag.1 = self.cursor_pos;
+            self.redraw_scheduler.request_redraw();
+            return;
+        }
         if self.cursor_captured || self.sidebar_blocked() {
             return;
         }
@@ -547,6 +684,14 @@ impl AppState {
         } else {
             self.sidebar.release()
         };
+
+        if pressed && !outcome.consumed && self.select_tool {
+            self.select_drag = Some((self.cursor_pos, self.cursor_pos));
+        } else if !pressed {
+            if let Some((a, b)) = self.select_drag.take() {
+                self.finish_selection(a, b);
+            }
+        }
         self.apply_sidebar_outcome(outcome);
     }
 
@@ -640,6 +785,10 @@ impl AppState {
             path,
             gaussians,
         });
+
+        self.select_drag = None;
+        self.selection.clear();
+        self.refresh_selection();
 
         Ok(())
     }

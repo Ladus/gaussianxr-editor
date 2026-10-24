@@ -18,8 +18,8 @@ with its gallery image.
 | Start screen | Help screen (`F1`) |
 | ![Start screen](.attachments/StartScreen.png) | ![Instruction screen](.attachments/InstructionScreen.png) |
 
-*Rotating the scene with `X`/`Y`/`Z` keys and scaling it to a real-world size with
-the measure tool (`1`, `2`, `3`).*
+*Rotating the scene with `X`/`Y`/`Z` keys and scaling it to a real-world size
+with the measure tool (`1`, `2`, `3`).*
 
 ## Viewing splats
 
@@ -42,12 +42,14 @@ the measure tool (`1`, `2`, `3`).*
   and check the placement), then press `3` and type the real length in meters to
   scale the whole scene so the line has that length.
 - **Color adjustment sidebar** (optional, opened with the `Adjust` button at the
-  top right): Photo editor-style sliders for temperature, tint, exposure, contrast,
-  highlights, shadows, saturation, vibrance and hue. The viewer shows the result
-  live and the adjustments are baked into exported files. The same panel has
-  `Rotate X/Y/Z` sliders (same axes as the `X`/`Y`/`Z` keys, with the alignment
-  grid shown while dragging) and measurement buttons (`Place 1`, `Place 2`,
-  `Enter measurement`, `Clear`).
+  top right): Photo editor-style sliders for temperature, tint, exposure,
+  contrast, highlights, shadows, saturation, vibrance and hue. The viewer shows
+  the result live and the adjustments are baked into exported files. The same
+  panel has `Rotate X/Y/Z` sliders (same axes as the `X`/`Y`/`Z` keys, with the
+  alignment grid shown while dragging) and measurement buttons (`Place 1`,
+  `Place 2`, `Enter measurement`, `Clear`), plus a rectangle select tool
+  (`Select`, `Invert`, `Delete`) that marks splats as bright red dots and
+  removes them.
 - **Reset view** key to look straight ahead again.
 - **Default orientation**: scenes are displayed rotated 180 degrees around Z to
   match the VR viewer's up axis. This is display-only and is not baked into
@@ -105,6 +107,8 @@ onto the window to load it.
 | `Enter measurement` (sidebar) | Same as key `3`: open the length prompt to scale the scene |
 | `Clear` (sidebar) | Remove both measurement points and the line |
 | `Export original` / `Export as .sog` (sidebar) | Same as `F2` / `F3`: export in the loaded file's format, or always as an optimized `.sog` |
+| `Select` (sidebar) | Toggle the select tool; while it is on, drag a rectangle over the scene to select the splats inside it (shown as bright red dots). A plain click clears the selection and `Shift` adds to it |
+| `Invert` / `Delete` (sidebar) | Invert the selection, or delete the selected splats from the scene (they are also gone from exports) |
 | Drag a slider in the sidebar | Change that adjustment (temperature, tint, exposure, contrast, highlights, shadows, saturation, vibrance, hue); click a slider's name to reset it, or `Reset all` to reset everything |
 | `F2` | Export the scene as-is, in the loaded file's format (`.ply` or `.sog`) |
 | `F3` | Export the scene as an optimized `.sog`, even if a `.ply` was loaded |

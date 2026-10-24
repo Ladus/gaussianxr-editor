@@ -4,6 +4,7 @@ mod grid;
 mod measure;
 pub mod renderer;
 pub mod screen_blit;
+mod selection;
 mod text_overlay;
 pub mod tile;
 pub mod ui;

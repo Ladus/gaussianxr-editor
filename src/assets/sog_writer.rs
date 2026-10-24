@@ -126,9 +126,11 @@ fn coeff_count_for_bands(bands: u32) -> usize {
 
 fn detect_bands(items: &[Gaussian3d]) -> Option<u32> {
     let used = |k: usize| {
-        items
-            .iter()
-            .any(|g| [g.sh[3 + k], g.sh[18 + k], g.sh[33 + k]].iter().any(|v| *v != 0.0))
+        items.iter().any(|g| {
+            [g.sh[3 + k], g.sh[18 + k], g.sh[33 + k]]
+                .iter()
+                .any(|v| *v != 0.0)
+        })
     };
 
     if (8..15).any(used) {
@@ -282,7 +284,10 @@ pub fn write_sog(gaussians: &Gaussians) -> anyhow::Result<Vec<u8>> {
     let (width, height) = image_size(count);
 
     // means: 16-bit values in the log domain split across two images
-    let logged: Vec<[f32; 3]> = items.iter().map(|g| g.position.map(log_transform)).collect();
+    let logged: Vec<[f32; 3]> = items
+        .iter()
+        .map(|g| g.position.map(log_transform))
+        .collect();
     let mut mins = [f32::INFINITY; 3];
     let mut maxs = [f32::NEG_INFINITY; 3];
     for p in &logged {
@@ -300,7 +305,9 @@ pub fn write_sog(gaussians: &Gaussians) -> anyhow::Result<Vec<u8>> {
         for k in 0..3 {
             let range = maxs[k] - mins[k];
             let q = if range > 0.0 {
-                ((p[k] - mins[k]) / range * 65535.0).round().clamp(0.0, 65535.0) as u16
+                ((p[k] - mins[k]) / range * 65535.0)
+                    .round()
+                    .clamp(0.0, 65535.0) as u16
             } else {
                 0
             };
@@ -323,7 +330,10 @@ pub fn write_sog(gaussians: &Gaussians) -> anyhow::Result<Vec<u8>> {
         scales.set(i, &g.scale.map(|v| nearest(&scale_codebook, v)));
     }
 
-    let dc_values: Vec<f32> = items.iter().flat_map(|g| [g.sh[0], g.sh[1], g.sh[2]]).collect();
+    let dc_values: Vec<f32> = items
+        .iter()
+        .flat_map(|g| [g.sh[0], g.sh[1], g.sh[2]])
+        .collect();
     let sh0_codebook = build_codebook(&dc_values);
     let mut sh0 = Pixels::new(width, height, 4);
     for (i, g) in items.iter().enumerate() {
@@ -343,7 +353,7 @@ pub fn write_sog(gaussians: &Gaussians) -> anyhow::Result<Vec<u8>> {
 
     let mut meta = json!({
         "version": 2,
-        "asset": { "generator": "wgpu-gs-viewer" },
+        "asset": { "generator": "gaussianxr-editor" },
         "count": count,
         "antialias": false,
         "means": {

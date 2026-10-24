@@ -10,7 +10,7 @@ permissions:
 
 env:
   APP_NAME: GaussianXR-Editor
-  BIN: wgpu-gs-viewer
+  BIN: gaussianxr-editor
 
 jobs:
   build:
